@@ -3,10 +3,8 @@
   "buildCommand": "pnpm install && pnpm build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "functions": {
-    "api/**/*.js": { "maxDuration": 300 }
-  },
   "rewrites": [
+    { "source": "/api/:path*", "destination": "https://benzo-api-dzv6bwbpba-ue.a.run.app/:path*" },
     { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
   ]
 }
