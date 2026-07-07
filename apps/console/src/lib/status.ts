@@ -4,7 +4,7 @@
  * Mirrors Deel's STABLECOIN status vocabulary almost verbatim (the closest
  * competitor analogue): "Payment in progress" → "Pending review" → "Paid" →
  * "Failed". Privacy-honest: the ETA is amount-INDEPENDENT (never leak size via a
- * longer ETA) and rail-honest (we settle on Stellar in seconds, so no multi-day
+ * longer ETA) and rail-honest (we settle on Avalanche in seconds, so no multi-day
  * bank ETAs); the only real wait is maker-checker, whose "ETA" is which role is
  * next, not a clock. Pure functions, fully client-side.
  */

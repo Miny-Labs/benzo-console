@@ -18,7 +18,7 @@ export type AuditAction =
 
 /**
  * One append-only, hash-chained audit entry (each binds the prior hash). The
- * chain head is anchored to Stellar for regulator-grade tamper-evidence.
+ * chain head is anchored to Avalanche for regulator-grade tamper-evidence.
  */
 export interface AuditLogEntry {
   id: string;

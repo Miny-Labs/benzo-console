@@ -10,7 +10,7 @@ import { Check, Clock, Play, Upload } from "lucide-react";
 import type { Counterparty } from "@benzo/types";
 import { api } from "../lib/api";
 import { useConsole } from "../lib/store";
-import { explorerTxUrl, fmtUsd, friendlyError } from "../lib/format";
+import { explorerTxUrl, fmtUsd, friendlyError, minorToUsdc, usdcToMinor } from "../lib/format";
 import { EASE, Page, Stagger, motion } from "../ui/motion";
 import { Button, Card, EmptyState, Input, Modal, Pill, Skeleton, StatusPill, useToast } from "../ui/primitives";
 
@@ -76,8 +76,7 @@ export function Contractors() {
     if (human === undefined) return;
     setBusy(c.id);
     try {
-      const stroops = (BigInt(Math.round(Number(human.replace(/[$,]/g, "")) * 1e7)) || 0n).toString();
-      await api.updateCounterparty(c.id, { payRate: stroops });
+      await api.updateCounterparty(c.id, { payRate: usdcToMinor(human) });
       toast({ title: `Rate updated for ${c.name}`, tone: "success" });
       setSavedFlash(c.id);
       setTimeout(() => setSavedFlash((id) => (id === c.id ? null : id)), 900);
@@ -240,7 +239,7 @@ export function Contractors() {
                           ) : (
                             <button
                               className="rounded font-display tabular-nums text-[15px] text-fg outline-none transition hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40"
-                              onClick={() => setRateEdits((m) => ({ ...m, [c.id]: c.payRate ? (Number(c.payRate.amount) / 1e7).toString() : "" }))}
+                              onClick={() => setRateEdits((m) => ({ ...m, [c.id]: c.payRate ? minorToUsdc(c.payRate.amount) : "" }))}
                               title="Click to edit rate"
                               data-testid="contractor-rate-edit"
                             >

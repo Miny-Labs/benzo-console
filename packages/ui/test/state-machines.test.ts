@@ -86,12 +86,12 @@ describe("walletReducer", () => {
 
 describe("balance masking", () => {
   it("masks when hidden and formats when revealed", () => {
-    const view = { shielded: 12_345_500_000n, pending: 5_000_000n };
+    const view = { shielded: 1_234_550_000n, pending: 500_000n };
     expect(displayBalance(view, { hidden: true })).toBe(MASK);
     expect(displayBalance(view, { hidden: false, symbol: "USDC" })).toBe("1,234.55 USDC");
     expect(displayPending(view, { hidden: false })).toBe("+0.50 pending");
     expect(displayPending(view, { hidden: true })).toBeNull();
     expect(displayPending({ shielded: 1n }, {})).toBeNull();
-    expect(spendable(view)).toBe(12_345_500_000n); // pending not spendable
+    expect(spendable(view)).toBe(1_234_550_000n); // pending not spendable
   });
 });

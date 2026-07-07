@@ -1,15 +1,16 @@
 /**
  * Business onboarding (P0-B1) - the "same caliber as consumer" front door for the
  * console: sign-in / local workspace unlock → a resumable KYB wizard → register
- * the org's treasury keys on-chain → land in the workspace. On testnet the KYB
- * decision is issuer-signed and recorded on-chain; spend/proof actions use the
- * local proving runtime.
+ * the org's managed treasury → land in the workspace. On Avalanche the KYB
+ * decision and proof receipts are coordinated by services/api.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { BadgeCheck, Building2, Check, FileCheck2, Landmark, Loader2, ScanSearch, ShieldCheck, Sparkles, Users, Wallet } from "lucide-react";
-import { api, currentGoogleCredential, storeGoogleCredential, type OnboardingDraft } from "../lib/api";
+import { useAccount, useConnect, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
+import { api, currentAuthToken, storeAuthToken, type OnboardingDraft, type SiweNonceResponse } from "../lib/api";
 import { friendlyError } from "../lib/format";
+import { CHAIN_ID, NETWORK_LABEL } from "../lib/network";
 import { Logo } from "../ui/Logo";
 import { StageVideo } from "../ui/StageVideo";
 import { EASE } from "../ui/motion";
@@ -25,7 +26,7 @@ const STEPS = [
   { key: "org", label: "Business", icon: Building2 },
   { key: "kyb", label: "Verification (KYB)", icon: FileCheck2 },
   { key: "zone", label: "Compliance", icon: ShieldCheck },
-  { key: "treasury", label: "Treasury keys", icon: Wallet },
+  { key: "treasury", label: "Treasury", icon: Wallet },
   { key: "review", label: "Review", icon: Sparkles },
 ] as const;
 type StepKey = (typeof STEPS)[number]["key"];
@@ -35,93 +36,75 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   return authed ? <Wizard onDone={onDone} /> : <AuthShell onAuthed={() => setAuthed(true)} />;
 }
 
-// ----------------------------------------------------------------- auth / SSO
-// zkLogin sign-in. When a Google OAuth client id is configured (BFF GOOGLE_CLIENT_ID,
-// surfaced via /api/auth/config), this renders the REAL Google Identity Services
-// button: the browser gets a genuine Google ID token (JWT), the BFF verifies its
-// RS256 signature against Google's JWKs (see google-oidc.ts), and the Benzo account
-// is derived from the verified `sub` (accountFromOidc) - the Sui-zkLogin model
-// (Phase 1; the in-circuit JWT proof is Phase 2). When no client id is set, the
-// console uses a local workspace unlock instead of pretending another provider
-// is enabled.
-declare global {
-  interface Window { google?: any }
+// ----------------------------------------------------------------- auth / SIWE
+// The console session is SIWE-backed. The wallet signs only an operator login
+// challenge; the org treasury remains server-custodied by services/api.
+function buildSiweMessage(address: string, challenge: SiweNonceResponse): string {
+  if (challenge.message) return challenge.message;
+  return [
+    `${window.location.host} wants you to sign in with your Ethereum account:`,
+    address,
+    "",
+    "Sign in to the Benzo business console.",
+    "",
+    `URI: ${window.location.origin}`,
+    "Version: 1",
+    `Chain ID: ${CHAIN_ID}`,
+    `Nonce: ${challenge.nonce}`,
+    `Issued At: ${new Date().toISOString()}`,
+  ].join("\n");
 }
 
-function isLocalVerificationUi(): boolean {
-  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+function shortAddress(address?: string): string {
+  return address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "";
 }
 
 function AuthShell({ onAuthed }: { onAuthed: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
-  const [clientId, setClientId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [hasStoredCredential, setHasStoredCredential] = useState(() => !!currentGoogleCredential());
-  const [showLocalVerification] = useState(() => isLocalVerificationUi());
-  const gbtn = useRef<HTMLDivElement>(null);
+  const [hasStoredSession, setHasStoredSession] = useState(() => !!currentAuthToken());
+  const { address, chainId, isConnected } = useAccount();
+  const { connectors, connectAsync } = useConnect();
+  const { disconnect } = useDisconnect();
+  const { signMessageAsync } = useSignMessage();
+  const { switchChainAsync } = useSwitchChain();
+  const wrongChain = isConnected && chainId !== CHAIN_ID;
 
   useEffect(() => {
-    setHasStoredCredential(!!currentGoogleCredential());
+    setHasStoredSession(!!currentAuthToken());
   }, []);
 
-  // Load real Google Identity Services if the BFF has a client id configured.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const cfg = await api.authConfig().catch(() => ({ googleClientId: null }) as { googleClientId: string | null });
-      if (cancelled || !cfg.googleClientId) return;
-      setClientId(cfg.googleClientId);
-      const init = () => {
-        const g = window.google?.accounts?.id;
-        if (!g || !gbtn.current) return;
-        g.initialize({
-          client_id: cfg.googleClientId,
-          callback: async (resp: { credential: string }) => {
-            setBusy("google");
-            const v = await api.googleVerify(resp.credential).catch((e) => ({ verified: false, error: (e as Error).message }) as Awaited<ReturnType<typeof api.googleVerify>>);
-            if (v.verified) {
-              storeGoogleCredential(resp.credential);
-              onAuthed();
-            }
-            else { setErr(v.error || "Google sign-in failed"); setBusy(null); }
-          },
-        });
-        g.renderButton(gbtn.current, { theme: "outline", size: "large", width: 356, text: "continue_with" });
-      };
-      if (window.google?.accounts?.id) { init(); return; }
-      const s = document.createElement("script");
-      s.src = "https://accounts.google.com/gsi/client"; s.async = true; s.defer = true; s.onload = init;
-      document.head.appendChild(s);
-    })();
-    return () => { cancelled = true; };
-  }, [onAuthed]);
-
-  function localUnlock() {
-    // When a real Google client id is configured, do not bypass the configured
-    // OIDC path. Without it, this is a local testnet workspace unlock, not an SSO.
-    if (clientId) {
-      setErr("Use the Google button above to sign in. Other providers aren't enabled for this workspace yet.");
-      return;
-    }
-    setBusy("local");
-    setTimeout(onAuthed, 350);
-  }
-
-  async function withLocalVerification() {
-    setBusy("local-test");
+  async function withSiwe() {
+    setBusy("siwe");
     setErr(null);
     try {
-      const subject = `codex-console-ui-${Date.now()}`;
-      const minted = await api.localVerificationAuth(subject);
-      storeGoogleCredential(minted.token);
+      let activeAddress = address;
+      let activeChainId = chainId;
+      if (!activeAddress) {
+        const connector = connectors[0];
+        if (!connector) throw new Error("No wallet connector is available.");
+        const connected = await connectAsync({ connector, chainId: CHAIN_ID });
+        activeAddress = connected.accounts[0];
+        activeChainId = connected.chainId;
+      }
+      if (!activeAddress) throw new Error("No wallet address was returned.");
+      if (activeChainId !== CHAIN_ID) {
+        await switchChainAsync({ chainId: CHAIN_ID });
+      }
+      const challenge = await api.siweNonce(activeAddress, CHAIN_ID);
+      const message = buildSiweMessage(activeAddress, challenge);
+      const signature = await signMessageAsync({ message });
+      const verified = await api.siweVerify({ address: activeAddress, chainId: CHAIN_ID, message, signature, nonce: challenge.nonce });
+      if (!verified.token) throw new Error("The API did not return a session token.");
+      storeAuthToken(verified.token, { address: activeAddress, chainId: CHAIN_ID });
       onAuthed();
     } catch (e) {
-      setErr(friendlyError(e, "Local verification sign-in is not available in this runtime."));
+      setErr(friendlyError(e, "Sign-in failed. Check your wallet and try again."));
       setBusy(null);
     }
   }
 
-  async function withStoredCredential() {
+  async function withStoredSession() {
     setBusy("stored");
     setErr(null);
     try {
@@ -140,26 +123,22 @@ function AuthShell({ onAuthed }: { onAuthed: () => void }) {
           <Logo size={26} /> <span className="font-display text-xl">Benzo for Business</span>
         </div>
         <h1 className="font-display text-2xl">Pay your team privately</h1>
-        <p className="mt-1.5 text-[13.5px] text-muted">Run payroll and pay vendors on-chain. Amounts and recipients stay confidential by default.</p>
+        <p className="mt-1.5 text-[13.5px] text-muted">Run payroll and pay vendors on Avalanche. Amounts and recipients stay confidential through eERC.</p>
         <div className="mt-6 space-y-2.5">
-          {hasStoredCredential ? (
-            <Button className="w-full" variant="outline" size="md" loading={busy === "stored"} onClick={withStoredCredential} data-testid="auth-stored">
-              Continue with signed-in account
+          {hasStoredSession ? (
+            <Button className="w-full" variant="outline" size="md" loading={busy === "stored"} onClick={withStoredSession} data-testid="auth-stored">
+              Continue with signed-in wallet
             </Button>
           ) : null}
-          {clientId ? (
-            // Real Google sign-in (zkLogin Phase 1).
-            <div ref={gbtn} className="flex justify-center" data-testid="auth-google" />
-          ) : (
-            <Button className="w-full" size="md" loading={busy === "local"} onClick={localUnlock} data-testid="auth-local">
-              Continue with this device
-            </Button>
-          )}
-          {showLocalVerification ? (
-            <Button className="w-full" variant="outline" size="md" loading={busy === "local-test"} onClick={withLocalVerification} data-testid="auth-local-verification">
-              Use local verification account
-            </Button>
+          {isConnected ? (
+            <div className="flex items-center justify-between rounded-[10px] border border-border bg-canvas px-3.5 py-2 text-[12.5px] text-muted" data-testid="auth-wallet-connected">
+              <span>{shortAddress(address)} · {wrongChain ? "wrong network" : NETWORK_LABEL}</span>
+              <button type="button" onClick={() => disconnect()} className="font-semibold text-primary">Disconnect</button>
+            </div>
           ) : null}
+          <Button className="w-full" size="md" loading={busy === "siwe"} onClick={withSiwe} data-testid="auth-siwe">
+            {wrongChain ? `Switch to ${NETWORK_LABEL} & sign in` : "Sign in with wallet"}
+          </Button>
           <a
             href="mailto:sales@benzo.app?subject=Benzo%20for%20Business%20%E2%80%94%20SSO%20setup"
             className="block w-full rounded-[10px] border border-border py-2.5 text-center text-[13px] font-medium text-muted transition hover:bg-[#f4f3ef]"
@@ -169,9 +148,7 @@ function AuthShell({ onAuthed }: { onAuthed: () => void }) {
         </div>
         {err ? <p className="mt-3 text-[12px] text-danger">{err}</p> : null}
         <p className="mt-5 text-[11.5px] text-muted">
-          {clientId
-            ? "Real Google sign-in: the JWT is verified server-side against Google's keys, and your account is derived from it on this device - your Google identity never goes on-chain."
-            : "Local testnet workspace unlock. Your treasury keys are generated on this device in the next step, and spends/proofs are enforced by the on-chain privacy protocol."}
+          Sign-In with Ethereum opens your operator session. The managed treasury is provisioned by Benzo services only after explicit consent; this signature never moves funds.
         </p>
       </Card>
     </Centered>
@@ -218,9 +195,9 @@ function Wizard({ onDone }: { onDone: () => void }) {
   async function registerMvk() {
     setBusy(true);
     try {
-      const r = await api.registerOwnerMvk();
+      const r = await api.provisionTreasury();
       setMvk(r);
-      toast({ title: r.onChain ? "Your secure books are ready" : "Keys prepared, but on-chain registration did not complete", tone: r.onChain ? "success" : "danger" });
+      toast({ title: r.onChain ? "Your managed treasury is ready" : "Treasury request prepared, but network registration did not complete", tone: r.onChain ? "success" : "danger" });
     } catch (e) {
       toast({ title: friendlyError(e), tone: "danger" });
     } finally {
@@ -267,7 +244,7 @@ function Wizard({ onDone }: { onDone: () => void }) {
                   </div>
                 </Step>
               ) : step.key === "kyb" ? (
-                <Step title="Verify your business (KYB)" hint="Business registration + beneficial-owner screening. The decision is recorded on-chain, not in a backend.">
+                <Step title="Verify your business (KYB)" hint="Business registration + beneficial-owner screening. The decision is recorded as an auditable attestation.">
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Registration #"><Input value={draft.registrationNumber ?? ""} onChange={(e) => set({ registrationNumber: e.target.value })} placeholder="Registration number" disabled={kyb?.status === "approved"} /></Field>
                     <Field label="Tax ID (EIN)"><Input value={draft.taxId ?? ""} onChange={(e) => set({ taxId: e.target.value })} placeholder="Tax identifier" disabled={kyb?.status === "approved"} /></Field>
@@ -284,14 +261,14 @@ function Wizard({ onDone }: { onDone: () => void }) {
                   ))}
                 </Step>
               ) : step.key === "treasury" ? (
-                <Step title="Set up your secure books" hint="This creates the keys that let only your team read your books and prove balances to auditors. It's the one step we can't skip.">
+                <Step title="Provision your managed treasury" hint="Benzo creates the managed treasury and scoped read material your team uses for reporting and auditor proofs.">
                   {mvk ? (
                     <div className="rounded-xl border border-success/25 bg-success/[0.06] p-4" data-testid="mvk-result">
-                      <div className="flex items-center gap-2 text-[14px] font-semibold text-[#1d7a52]"><Check size={16} /> Your secure books are ready{mvk.onChain ? "" : " · on-chain registration pending"}</div>
+                      <div className="flex items-center gap-2 text-[14px] font-semibold text-[#1d7a52]"><Check size={16} /> Your managed treasury is ready{mvk.onChain ? "" : " · network registration pending"}</div>
                       {mvk.txHash ? <div className="mt-1 break-all font-mono text-[11px] text-muted">ref {mvk.txHash}</div> : null}
                     </div>
                   ) : (
-                    <Button loading={busy} onClick={registerMvk} data-testid="mvk-register"><ShieldCheck size={16} /> Set up keys</Button>
+                    <Button loading={busy} onClick={registerMvk} data-testid="mvk-register"><ShieldCheck size={16} /> Provision treasury</Button>
                   )}
                 </Step>
               ) : (
@@ -302,7 +279,7 @@ function Wizard({ onDone }: { onDone: () => void }) {
                     <Row k="Country" v={draft.country ?? "Not set"} />
                     <Row k="KYB" v={kyb?.status === "approved" ? (kyb.onChain ? "Verified on-chain" : "Verified") : "Pending"} />
                     <Row k="Compliance" v={draft.complianceZoneId === "zone_eu" ? "European Union" : "United States"} />
-                    <Row k="Secure books" v={mvk?.onChain ? "Ready" : mvk ? "Registration pending" : "Not set up"} />
+                    <Row k="Managed treasury" v={mvk?.onChain ? "Ready" : mvk ? "Registration pending" : "Not set up"} />
                   </div>
                   <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-border p-3.5 text-[12.5px] text-muted">
                     <Users size={15} className="mt-px flex-none text-primary" />

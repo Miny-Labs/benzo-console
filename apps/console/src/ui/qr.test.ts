@@ -83,7 +83,7 @@ function decode(matrix: boolean[][], version: number): string {
 describe("QR encoder", () => {
   const cases = [
     "hi",
-    "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN", // 56B G-address
+    "0x1234567890abcdef1234567890abcdef12345678",
     "USDC:GBNZ7XK2HV3J4QYL5M6N7P8R9S2T3U4V5W6X7Y8Z9A2B3C4D5E6F7G8H", // 61B
     "https://benzo.app/pay?to=GABC123&asset=USDC", // 43B byte mode
   ];

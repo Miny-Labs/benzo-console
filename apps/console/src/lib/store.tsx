@@ -18,7 +18,7 @@ import type {
   TreasuryView,
   ViewingGrant,
 } from "@benzo/types";
-import { api, AUTH_CHANGED_EVENT, currentGoogleCredential } from "./api";
+import { api, AUTH_CHANGED_EVENT, currentAuthToken } from "./api";
 
 interface ConsoleState {
   session: AuthSession | null;
@@ -86,7 +86,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [masked, setMasked] = useState<boolean>(() => localStorage.getItem("benzo.masked") === "1");
-  const [authenticated, setAuthenticated] = useState(() => !!currentGoogleCredential());
+  const [authenticated, setAuthenticated] = useState(() => !!currentAuthToken());
 
   const toggleMasked = useCallback(() => {
     setMasked((m) => {
@@ -102,7 +102,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     // Promise.all rejects atomically. Each slice keeps its prior value on a
     // miss; slow chain-backed slices also time out independently so grants,
     // invites, settings, and audit screens don't sit in skeleton state while
-    // Stellar/RPC is degraded. We only surface an error if the whole load fails.
+    // Chain/API reads can degrade independently. We only surface an error if the whole load fails.
     const results = await Promise.allSettled([
       readModel("live", api.live),
       readModel("session", api.session),
@@ -176,7 +176,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   }, [authenticated, refresh]);
 
   useEffect(() => {
-    const onAuthChanged = () => setAuthenticated(!!currentGoogleCredential());
+    const onAuthChanged = () => setAuthenticated(!!currentAuthToken());
     window.addEventListener(AUTH_CHANGED_EVENT, onAuthChanged);
     return () => window.removeEventListener(AUTH_CHANGED_EVENT, onAuthChanged);
   }, []);

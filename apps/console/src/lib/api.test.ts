@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CreatePaymentRequest } from "@benzo/types";
-import { api, apiHref, currentGoogleCredential, storeGoogleCredential } from "./api";
+import { api, apiHref, currentAuthToken, storeAuthToken } from "./api";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -51,7 +51,7 @@ describe("console API idempotency", () => {
   });
 
   it("adds auth and idempotency headers for console money movement", async () => {
-    localStorage.setItem("benzo.console.googleCredential", "google.jwt");
+    localStorage.setItem("benzo.console.siweToken", "siwe.jwt");
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ invoice: { id: "inv_1" }, payment: { id: "pay_1" } }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -59,7 +59,7 @@ describe("console API idempotency", () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe(apiHref("/invoices/inv_1/pay"));
     const headers = callHeaders(fetchMock.mock.calls[0]);
-    expect(headers.get("authorization")).toBe("Bearer google.jwt");
+    expect(headers.get("authorization")).toBe("Bearer siwe.jwt");
     expect(headers.get("idempotency-key")).toMatch(/^idem_/);
   });
 
@@ -74,8 +74,10 @@ describe("console API idempotency", () => {
     } satisfies CreatePaymentRequest;
     const actions: Array<() => Promise<unknown>> = [
       () => api.saveOnboarding({ name: "Acme" }),
+      () => api.siweNonce("0x1234567890abcdef1234567890abcdef12345678", 43113),
+      () => api.siweVerify({ address: "0x1234567890abcdef1234567890abcdef12345678", chainId: 43113, message: "m", signature: "0xsig", nonce: "n" }),
       () => api.submitKyb({ legalName: "Acme Inc." }),
-      () => api.registerOwnerMvk(),
+      () => api.provisionTreasury(),
       () => api.finishOnboarding(),
       () => api.proveBalance("1"),
       () => api.proveTotal(),
@@ -127,8 +129,8 @@ describe("console API idempotency", () => {
     expect(callHeaders(fetchMock.mock.calls[1]).get("idempotency-key")).toBe(firstKey);
   });
 
-  it("loads proof receipts through the authenticated RPC gateway without mutation idempotency", async () => {
-    localStorage.setItem("benzo.console.googleCredential", "google.jwt");
+  it("loads proof receipts through the authenticated API without mutation idempotency", async () => {
+    localStorage.setItem("benzo.console.siweToken", "siwe.jwt");
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse([{ id: "prf_1", action: "payroll.policy.cap", vkId: "SPENDCAP", verified: true, createdAt: "2026-06-26T00:00:00.000Z" }]));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -136,12 +138,12 @@ describe("console API idempotency", () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe(apiHref("/proof-receipts"));
     const headers = callHeaders(fetchMock.mock.calls[0]);
-    expect(headers.get("authorization")).toBe("Bearer google.jwt");
+    expect(headers.get("authorization")).toBe("Bearer siwe.jwt");
     expect(headers.get("idempotency-key")).toBeNull();
   });
 
   it("loads sanitized recovery status without mutation idempotency", async () => {
-    localStorage.setItem("benzo.console.googleCredential", "google.jwt");
+    localStorage.setItem("benzo.console.siweToken", "siwe.jwt");
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ status: "ok", recovery: { bound: true, status: "healthy", custody: "non-custodial", createdAt: "2026-06-26T00:00:00.000Z", lastSeenAt: "2026-06-26T00:01:00.000Z", nextSteps: ["Another owner must approve migration."] } }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -153,18 +155,18 @@ describe("console API idempotency", () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe(apiHref("/recovery/status"));
     const headers = callHeaders(fetchMock.mock.calls[0]);
-    expect(headers.get("authorization")).toBe("Bearer google.jwt");
+    expect(headers.get("authorization")).toBe("Bearer siwe.jwt");
     expect(headers.get("idempotency-key")).toBeNull();
   });
 
-  it("calls the localhost verification auth endpoint without a stored credential", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ token: "benzo-test-v1.body.sig", tokenType: "Bearer", expiresIn: 3600 }));
+  it("requests a SIWE nonce without a stored credential", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ nonce: "abc123" }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(api.localVerificationAuth("local-ui-console")).resolves.toMatchObject({ tokenType: "Bearer" });
+    await expect(api.siweNonce("0x1234567890abcdef1234567890abcdef12345678", 43113)).resolves.toMatchObject({ nonce: "abc123" });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe(apiHref("/auth/local"));
+    expect(fetchMock.mock.calls[0][0]).toBe(apiHref("/auth/siwe/nonce"));
     const headers = callHeaders(fetchMock.mock.calls[0]);
     expect(headers.get("authorization")).toBeNull();
   });
@@ -175,24 +177,24 @@ describe("console API idempotency", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const pending = api.dashboard();
-    storeGoogleCredential("fresh.console.jwt");
+    storeAuthToken("fresh.console.jwt");
     resolveFetch(jsonResponse({ error: "Unauthorized" }, 401));
 
     await expect(pending).rejects.toThrow("Unauthorized");
-    expect(currentGoogleCredential()).toBe("fresh.console.jwt");
+    expect(currentAuthToken()).toBe("fresh.console.jwt");
   });
 
   it("does not clear a newer console sign-in when a stale-token request returns 401", async () => {
-    localStorage.setItem("benzo.console.googleCredential", "old.console.jwt");
+    localStorage.setItem("benzo.console.siweToken", "old.console.jwt");
     let resolveFetch!: (value: Response) => void;
     const fetchMock = vi.fn().mockReturnValue(new Promise<Response>((resolve) => { resolveFetch = resolve; }));
     vi.stubGlobal("fetch", fetchMock);
 
     const pending = api.dashboard();
-    storeGoogleCredential("fresh.console.jwt");
+    storeAuthToken("fresh.console.jwt");
     resolveFetch(jsonResponse({ error: "Unauthorized" }, 401));
 
     await expect(pending).rejects.toThrow("Unauthorized");
-    expect(currentGoogleCredential()).toBe("fresh.console.jwt");
+    expect(currentAuthToken()).toBe("fresh.console.jwt");
   });
 });

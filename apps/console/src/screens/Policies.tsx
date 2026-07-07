@@ -4,30 +4,17 @@
  * plaintext proposal, since Benzo hides those on-chain), ordered APPROVE STEPS,
  * and a separate RELEASE GATE (sign & settle). This is NOT cosmetic: the release
  * gate's threshold maps onto GENUINELY-ENFORCED dual-control - org_account
- * threshold + the in-circuit joinsplit_org M-of-N (JSPLITORG, verified on testnet).
+ * threshold + the eERC private-transfer policy checks verified on Avalanche.
  */
 import { useState } from "react";
 import { ShieldCheck, Lock, Plus, Minus, Save } from "lucide-react";
 import type { ApprovalPolicy, ApprovalStep, Member } from "@benzo/types";
 import { api } from "../lib/api";
 import { useConsole } from "../lib/store";
-import { friendlyError } from "../lib/format";
+import { friendlyError, minorToUsdc, usdcToMinor } from "../lib/format";
 import { policySummary, conditionLabel, totalApprovers } from "../lib/policy";
 import { Page, Stagger, motion, AnimatePresence, EASE } from "../ui/motion";
 import { Button, Card, Input, Pill, useToast } from "../ui/primitives";
-
-function stroopsToHuman(v: string | string[]): string {
-  if (Array.isArray(v)) return "";
-  const raw = BigInt(v || "0");
-  const whole = raw / 10_000_000n;
-  const frac = (raw % 10_000_000n).toString().padStart(7, "0").replace(/0+$/, "");
-  return frac ? `${whole}.${frac}` : whole.toString();
-}
-
-function humanToStroops(v: string): string {
-  const [whole = "0", frac = ""] = v.replace(/[$,]/g, "").trim().split(".");
-  return (BigInt(whole || "0") * 10_000_000n + BigInt(frac.padEnd(7, "0").slice(0, 7) || "0")).toString();
-}
 
 export function Policies() {
   const { policies, members, refresh, loading } = useConsole();
@@ -87,7 +74,7 @@ function PolicyEditor({ policy, members, onSaved }: { policy: ApprovalPolicy; me
     setGate((g) => (g ? { ...g, minApprovers: Math.max(1, g.minApprovers + delta) } : g));
   }
   function setAmountCondition(idx: number, human: string) {
-    setConditions((cs) => cs.map((c, i) => (i === idx ? { ...c, value: humanToStroops(human) } : c)));
+    setConditions((cs) => cs.map((c, i) => (i === idx ? { ...c, value: usdcToMinor(human) } : c)));
   }
 
   async function save() {
@@ -123,7 +110,7 @@ function PolicyEditor({ policy, members, onSaved }: { policy: ApprovalPolicy; me
                   <Input
                     label={`Amount ${c.operator}`}
                     inputMode="decimal"
-                    value={stroopsToHuman(c.value)}
+                    value={minorToUsdc(c.value)}
                     onChange={(e) => setAmountCondition(i, e.target.value.replace(/[^0-9.]/g, ""))}
                     data-testid="policy-condition-amount"
                   />

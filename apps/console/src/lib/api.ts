@@ -1,6 +1,7 @@
 /**
- * Typed client for @benzo/console-api (Vite proxies "/api" to :8790). Screens use
- * only this typed surface, so the UI and BFF share one contract.
+ * Typed client for benzo services/api. Screens use only this typed surface, so
+ * the UI can keep the port contained while per-flow issues finish the backend
+ * contract details.
  */
 import type {
   Account,
@@ -143,11 +144,15 @@ export interface RecoveryStatus {
 }
 
 export function apiHref(path: string): string {
-  return `/api/rpc?path=${encodeURIComponent(path)}`;
+  const apiBaseUrl = ((import.meta.env as Record<string, string | undefined>).VITE_API_BASE_URL ?? "/api").replace(/\/+$/, "");
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return `${apiBaseUrl}${suffix}`;
 }
 
-const GOOGLE_TOKEN_KEY = "benzo.console.googleCredential";
-const GOOGLE_IDENTITY_KEY = "benzo.console.identityKey";
+const AUTH_TOKEN_KEY = "benzo.console.siweToken";
+const AUTH_IDENTITY_KEY = "benzo.console.siweIdentity";
+const LEGACY_GOOGLE_TOKEN_KEY = "benzo.console.googleCredential";
+const LEGACY_GOOGLE_IDENTITY_KEY = "benzo.console.identityKey";
 const IDEMPOTENCY_PREFIX = "benzo.idempotency.console.v1:";
 export const AUTH_REQUIRED_EVENT = "benzo:console-auth-required";
 export const AUTH_CHANGED_EVENT = "benzo:console-auth-changed";
@@ -161,31 +166,34 @@ function b64urlJson(seg: string): Record<string, unknown> | null {
 }
 
 function identityKeyFromCredential(credential: string): string {
-  const parts = credential.split(".");
-  const payload = parts.length === 3 ? b64urlJson(parts[1]) : null;
-  const iss = typeof payload?.iss === "string" ? payload.iss : "unknown";
-  const aud = typeof payload?.aud === "string" ? payload.aud : "unknown";
-  const sub = typeof payload?.sub === "string" ? payload.sub : "unknown";
+  const payload = b64urlJson(credential);
+  const address = typeof payload?.address === "string" ? payload.address.toLowerCase() : "unknown";
+  const chainId = typeof payload?.chainId === "number" || typeof payload?.chainId === "string" ? String(payload.chainId) : "unknown";
   let h = 0x811c9dc5;
-  for (const ch of `console|${iss}|${aud}|${sub}`) {
+  for (const ch of `console|siwe|${chainId}|${address}`) {
     h ^= ch.charCodeAt(0);
     h = Math.imul(h, 0x01000193);
   }
-  return `g${(h >>> 0).toString(16).padStart(8, "0")}`;
+  return `e${(h >>> 0).toString(16).padStart(8, "0")}`;
 }
 
-export function storeGoogleCredential(credential: string): void {
-  const nextIdentity = identityKeyFromCredential(credential);
-  const prevIdentity = localStorage.getItem(GOOGLE_IDENTITY_KEY);
+export function storeAuthToken(token: string, identity?: { address: string; chainId: number }): void {
+  const identityPayload = identity ? btoa(JSON.stringify(identity)) : token;
+  const nextIdentity = identityKeyFromCredential(identityPayload);
+  const prevIdentity = localStorage.getItem(AUTH_IDENTITY_KEY);
   if (prevIdentity && prevIdentity !== nextIdentity) localStorage.removeItem("benzo.console.onboarded");
-  localStorage.setItem(GOOGLE_IDENTITY_KEY, nextIdentity);
-  localStorage.setItem(GOOGLE_TOKEN_KEY, credential);
+  localStorage.setItem(AUTH_IDENTITY_KEY, nextIdentity);
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+  localStorage.removeItem(LEGACY_GOOGLE_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_GOOGLE_IDENTITY_KEY);
   window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
 }
 
 export function clearHostedAuthState(): void {
-  localStorage.removeItem(GOOGLE_TOKEN_KEY);
-  localStorage.removeItem(GOOGLE_IDENTITY_KEY);
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_IDENTITY_KEY);
+  localStorage.removeItem(LEGACY_GOOGLE_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_GOOGLE_IDENTITY_KEY);
   localStorage.removeItem("benzo.console.onboarded");
   window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
 }
@@ -195,8 +203,8 @@ export function notifyAuthRequired(): void {
   window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT));
 }
 
-export function currentGoogleCredential(): string | null {
-  return localStorage.getItem(GOOGLE_TOKEN_KEY);
+export function currentAuthToken(): string | null {
+  return localStorage.getItem(AUTH_TOKEN_KEY) ?? localStorage.getItem(LEGACY_GOOGLE_TOKEN_KEY);
 }
 
 function shortHash(input: string): string {
@@ -232,13 +240,13 @@ function idempotencyKey(path: string, init?: RequestInit): { key: string; clear:
 function prepareApiRequest(path: string, init?: RequestInit): { url: string; init: RequestInit; clearIdempotency?: () => void; authToken: string | null } {
   const headers = new Headers(init?.headers);
   headers.set("content-type", headers.get("content-type") ?? "application/json");
-  const authToken = currentGoogleCredential();
+  const authToken = currentAuthToken();
   if (authToken) headers.set("authorization", `Bearer ${authToken}`);
   const idem = idempotencyKey(path, init);
   if (idem) headers.set("Idempotency-Key", idem.key);
   return {
     url: apiHref(path),
-    init: { ...init, headers },
+    init: { credentials: init?.credentials ?? "include", ...init, headers },
     clearIdempotency: idem?.clear,
     authToken,
   };
@@ -259,9 +267,9 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
       }
       if (
         res.status === 401 &&
-        path !== "/auth/google" &&
+        path !== "/auth/siwe/verify" &&
         prepared.authToken &&
-        currentGoogleCredential() === prepared.authToken
+        currentAuthToken() === prepared.authToken
       ) notifyAuthRequired();
       throw new Error(detail);
     }
@@ -285,25 +293,47 @@ export interface OnboardingDraft {
   mvk?: { onChain: boolean; txHash?: string; mvkRoot?: string };
 }
 
+export interface SiweNonceResponse {
+  nonce: string;
+  message?: string;
+  expiresAt?: string;
+}
+
+export interface SiweVerifyRequest {
+  address: string;
+  chainId: number;
+  message: string;
+  signature: string;
+  nonce?: string;
+}
+
+export interface SiweVerifyResponse {
+  token: string;
+  tokenType?: "Bearer";
+  expiresAt?: string;
+  session?: AuthSession;
+}
+
+interface PublicBalanceResponse {
+  units?: string;
+  stroops?: string;
+  address: string;
+  asset: string;
+  issuer: string;
+  live: boolean;
+}
+
+function normalizePublicBalance(r: PublicBalanceResponse): { units: string; address: string; asset: string; issuer: string; live: boolean } {
+  return { units: r.units ?? r.stroops ?? "0", address: r.address, asset: r.asset, issuer: r.issuer, live: r.live };
+}
+
 export const api = {
   session: () => http<AuthSession>("/session"),
   recoveryStatus: () => http<RecoveryStatus>("/recovery/status"),
-  // zkLogin / SSO: is real Google configured, and verify a Google ID token.
-  authConfig: () => http<{ googleClientId: string | null; google: boolean }>("/auth/config"),
-  localVerificationAuth: (subject?: string) =>
-    http<{ token: string; tokenType: string; expiresIn: number }>("/auth/local", {
-      method: "POST",
-      body: JSON.stringify({
-        subject,
-        name: "Local Verification Console",
-        ttlSeconds: 3600,
-      }),
-    }),
-  googleVerify: (credential: string, nonce?: string) =>
-    http<{ verified: boolean; sub?: string; email?: string; name?: string; error?: string; configured?: boolean; encPub?: string }>(
-      "/auth/google",
-      { method: "POST", body: JSON.stringify({ credential, nonce }) },
-    ),
+  siweNonce: (address: string, chainId: number) =>
+    http<SiweNonceResponse>("/auth/siwe/nonce", { method: "POST", body: JSON.stringify({ address, chainId }) }),
+  siweVerify: (body: SiweVerifyRequest) =>
+    http<SiweVerifyResponse>("/auth/siwe/verify", { method: "POST", body: JSON.stringify(body) }),
   onboarding: () => http<OnboardingDraft>("/onboarding"),
   saveOnboarding: (patch: OnboardingDraft) =>
     http<OnboardingDraft>("/onboarding", { method: "PATCH", body: JSON.stringify(patch) }),
@@ -311,15 +341,17 @@ export const api = {
     http<NonNullable<OnboardingDraft["kyb"]>>("/onboarding/kyb", { method: "POST", body: JSON.stringify(patch) }),
   kybStatus: () =>
     http<{ status: "unverified" | "pending" | "approved" | "rejected"; inquiryRef: string; onChain: boolean }>("/onboarding/kyb-status"),
+  provisionTreasury: () =>
+    http<{ onChain: boolean; txHash?: string; mvkRoot?: string; treasuryAddress?: string }>("/treasury/provision", { method: "POST", body: "{}" }),
   registerOwnerMvk: () =>
-    http<{ onChain: boolean; txHash?: string; mvkRoot?: string }>("/onboarding/register-mvk", { method: "POST", body: "{}" }),
+    http<{ onChain: boolean; txHash?: string; mvkRoot?: string }>("/treasury/provision", { method: "POST", body: "{}" }),
   finishOnboarding: () => http<AuthSession>("/onboarding/finish", { method: "POST", body: "{}" }),
   live: () => http<LiveStatusResponse>("/live"),
   dashboard: () => http<DashboardSummary>("/dashboard"),
   treasury: () => http<TreasuryView>("/treasury"),
   // Prove reserves: treasury >= a chosen floor on-chain (ORGBAL); returns an on-chain ref.
   proveBalance: (min: string) =>
-    http<{ holds: boolean; onChain: boolean; minStroops: string; ref?: OnChainRef }>("/treasury/prove-balance", { method: "POST", body: JSON.stringify({ min }) }),
+    http<{ holds: boolean; onChain: boolean; minUnits: string; ref?: OnChainRef }>("/treasury/prove-balance", { method: "POST", body: JSON.stringify({ min }) }),
   proveTotal: () =>
     http<{ total: string; onChain: boolean; ref?: OnChainRef }>("/treasury/prove-total", { method: "POST", body: "{}" }),
   // True solvency: prove treasury >= Σ(pending payroll + open invoices), both hidden.
@@ -333,20 +365,20 @@ export const api = {
     http<{
       live: boolean; org?: string; period?: string; total?: string; onChain?: boolean;
       vkId?: string; verifier?: string; network?: string; root?: string;
-      sorobanProof?: unknown; sorobanPublics?: string[]; issuedAt?: string;
+      proof?: unknown; publicInputs?: string[]; sorobanProof?: unknown; sorobanPublics?: string[]; issuedAt?: string;
     }>("/records/period-total", { method: "POST", body: JSON.stringify({ period }) }),
   // "Make private" (shield public -> pool). amount in USDC (human).
   fundTreasury: (amount: string) =>
     http<{ onChain: boolean; txHash?: string; error?: string }>("/treasury/fund", { method: "POST", body: JSON.stringify({ amount }) }),
   // Two-balance model. Public = liquid, unshielded USDC (what external wallets see).
-  // The org's M-of-N shielded pool is api.treasury(). stroops are 7dp.
+  // The org's M-of-N shielded pool is api.treasury(). units are 6-decimal USDC.
   treasuryPublicBalance: () =>
-    http<{ stroops: string; address: string; asset: string; issuer: string; live: boolean }>("/treasury/public-balance"),
+    http<PublicBalanceResponse>("/treasury/public-balance").then(normalizePublicBalance),
   // Receive: address + asset/issuer for a Receive QR (inbound lands in Public).
   treasuryReceive: () =>
     http<{ address: string; asset: string; issuer: string; live: boolean }>("/treasury/receive"),
   // "Send to a wallet": real on-chain USDC transfer from Public to an external
-  // G-address. amount in USDC (human). Friendly trustline/balance errors in `error`.
+  // EVM address. amount in USDC (human). Friendly balance errors in `error`.
   treasurySendPublic: (to: string, amount: string) =>
     http<{ txHash?: string; onChain: boolean; error?: string }>("/treasury/send-public", { method: "POST", body: JSON.stringify({ to, amount }) }),
 

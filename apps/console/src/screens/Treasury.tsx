@@ -18,24 +18,19 @@ import { useEffect, useState } from "react";
 import { ArrowDownToLine, ArrowUpRight, Eye, EyeOff, QrCode as QrIcon, Send, ShieldCheck, Wallet } from "lucide-react";
 import { api, type OnChainRef } from "../lib/api";
 import { useConsole } from "../lib/store";
-import { explorerTxUrl, fmtUsd, formatAddress, friendlyError } from "../lib/format";
+import { explorerTxUrl, fmtUsd, formatAddress, friendlyError, usdcToMinor } from "../lib/format";
 import { NETWORK_LABEL } from "../lib/network";
 import { Page, Proving, Reveal, Stagger } from "../ui/motion";
 import { OnChainDetail } from "../ui/onchain";
 import { QrCode } from "../ui/qr";
 import { AddressDisplay, Button, Card, CopyButton, Input, Modal, Pill, Skeleton, useToast } from "../ui/primitives";
 
-/** USDC (human) -> stroops (7dp), matching the BFF. Empty/NaN -> "0". */
-function toStroops(usd: string): string {
-  return (BigInt(Math.round((Number(usd) || 0) * 1e7)) || 0n).toString();
-}
-
 export function Treasury() {
   const toast = useToast();
   const { treasury, masked, loading, refresh } = useConsole();
 
   // ---- Public balance + receive coordinates (two-balance model) -------------
-  const [pub, setPub] = useState<{ stroops: string; address: string; asset: string; issuer: string; live: boolean } | null>(null);
+  const [pub, setPub] = useState<{ units: string; address: string; asset: string; issuer: string; live: boolean } | null>(null);
   const [pubLoading, setPubLoading] = useState(true);
 
   async function loadPublic() {
@@ -86,7 +81,7 @@ export function Treasury() {
   const [confirmSend, setConfirmSend] = useState(false);
   const [busySend, setBusySend] = useState(false);
   const [sendResult, setSendResult] = useState<{ onChain: boolean; txHash?: string; error?: string } | null>(null);
-  const addrLooksValid = /^G[A-Z2-7]{55}$/.test(sendTo.trim());
+  const addrLooksValid = /^0x[a-fA-F0-9]{40}$/.test(sendTo.trim());
 
   async function sendPublic(): Promise<boolean> {
     setBusySend(true);
@@ -145,8 +140,8 @@ export function Treasury() {
     setBusy(true);
     setProof(null);
     try {
-      const minStroops = toStroops(min);
-      const r = await api.proveBalance(minStroops);
+      const minUnits = usdcToMinor(min);
+      const r = await api.proveBalance(minUnits);
       setProof({ holds: r.holds, onChain: r.onChain, ref: r.ref ? { ...r.ref, label: "Reserves proof" } : undefined });
       toast({ title: r.holds ? (r.onChain ? "Reserves verified on-chain" : "Proof was not verified on-chain") : "Below the floor (proven)", tone: r.holds && r.onChain ? "success" : "danger" });
     } catch (e) {
@@ -184,7 +179,7 @@ export function Treasury() {
     }
   }
 
-  const publicUsd = pub ? fmtUsd(pub.stroops) : "$0.00";
+  const publicUsd = pub ? fmtUsd(pub.units) : "$0.00";
 
   return (
     <Page>
@@ -267,7 +262,7 @@ export function Treasury() {
                 />
               </div>
               {busyFund ? (
-                <Proving className="mt-4" steps={["Moving USDC into the private pool", `Settling on the Stellar ${NETWORK_LABEL} network`]} />
+                <Proving className="mt-4" steps={["Moving USDC into the private pool", `Settling on ${NETWORK_LABEL}`]} />
               ) : (
                 <Button className="mt-4 w-full" onClick={() => setConfirmFund(true)} disabled={!(Number(fundAmt) > 0)} data-testid="fund-treasury">Make private</Button>
               )}
@@ -356,7 +351,7 @@ export function Treasury() {
             {proof ? (
               <Reveal tone={proof.holds && proof.onChain ? "success" : "danger"} className={`mt-4 rounded-lg border px-4 py-3 ${proof.holds && proof.onChain ? "border-success/30 bg-success/8" : "border-danger/30 bg-danger/8"}`} data-testid="prove-result">
                 <div className={`flex items-center gap-1.5 text-[13px] font-semibold ${proof.holds && proof.onChain ? "text-[#1d7a52]" : "text-[#b4232a]"}`}>
-                  <ShieldCheck size={14} /> {proof.holds ? `Holds ≥ ${fmtUsd(toStroops(min))}` : "Below the requested floor"}
+                  <ShieldCheck size={14} /> {proof.holds ? `Holds >= ${fmtUsd(usdcToMinor(min))}` : "Below the requested floor"}
                 </div>
                 <div className="mt-1 flex items-center justify-between gap-2 text-[12px] text-muted">
                   <span>{proof.onChain ? "Anyone can verify this independently." : "Proof was not verified on-chain."}</span>
@@ -427,20 +422,20 @@ export function Treasury() {
           <>
             <Button variant="ghost" onClick={() => setConfirmFund(false)}>Cancel</Button>
             <Button loading={busyFund} onClick={() => { setConfirmFund(false); void fund(); }} data-testid="fund-confirm">
-              <EyeOff size={15} /> Make {fmtUsd(toStroops(fundAmt))} private
+              <EyeOff size={15} /> Make {fmtUsd(usdcToMinor(fundAmt))} private
             </Button>
           </>
         }
       >
         <div className="space-y-3">
           <p className="text-sm text-muted">
-            This moves <b>real USDC</b> on the Stellar {NETWORK_LABEL} network from your Public balance into the private pool - a dual-controlled M-of-N org note. It settles on-chain and <b>can't be undone</b> from here.
+            This moves <b>real USDC</b> on {NETWORK_LABEL} from your Public balance into the private pool - a dual-controlled M-of-N org note. It settles on-chain and <b>can't be undone</b> from here.
           </p>
           <p className="text-[12.5px] leading-relaxed text-muted">
             Proof location: local. The Console prover creates the shield proof in the Benzo runtime before the on-chain settlement is accepted.
           </p>
           <div className="space-y-2 rounded-xl bg-canvas p-4 text-[14px]">
-            <div className="flex justify-between"><span className="text-muted">Amount</span><span className="font-display tnum font-semibold">{fmtUsd(toStroops(fundAmt))}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Amount</span><span className="font-display tnum font-semibold">{fmtUsd(usdcToMinor(fundAmt))}</span></div>
             <div className="flex justify-between"><span className="text-muted">From</span><span className="font-semibold">Public</span></div>
             <div className="flex justify-between"><span className="text-muted">Into</span><span className="font-semibold">Private (M-of-N note)</span></div>
             <div className="flex justify-between"><span className="text-muted">Proof location</span><span className="font-semibold">Local</span></div>
@@ -466,7 +461,7 @@ export function Treasury() {
               }}
               data-testid="send-wallet-confirm"
             >
-              <Send size={15} /> Send {Number(sendAmt) > 0 ? fmtUsd(toStroops(sendAmt)) : "USDC"}
+              <Send size={15} /> Send {Number(sendAmt) > 0 ? fmtUsd(usdcToMinor(sendAmt)) : "USDC"}
             </Button>
           </>
         }
@@ -474,7 +469,7 @@ export function Treasury() {
         <div className="space-y-3">
           <Input
             label="Recipient wallet address"
-            placeholder="G…"
+            placeholder="0x..."
             spellCheck={false}
             value={sendTo}
             onChange={(e) => {

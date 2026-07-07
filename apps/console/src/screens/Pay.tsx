@@ -10,14 +10,9 @@ import { ArrowRight, ArrowUpRight, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
 import { api } from "../lib/api";
 import { useConsole } from "../lib/store";
-import { fmtUsd, formatAddress } from "../lib/format";
+import { fmtUsd, formatAddress, usdcToMinor } from "../lib/format";
 import { Page } from "../ui/motion";
 import { Button, Card, Input, PrivacyDisclosure, Select, useToast } from "../ui/primitives";
-
-function toStroops(human: string): string {
-  const [w, f = ""] = human.replace(/[$,]/g, "").trim().split(".");
-  return (BigInt(w || "0") * 10_000_000n + BigInt(f.padEnd(7, "0").slice(0, 7) || "0")).toString();
-}
 
 export function Pay() {
   const nav = useNavigate();
@@ -44,7 +39,7 @@ export function Pay() {
         type: "shielded_transfer",
         fromAccountId,
         toCounterpartyId,
-        amount: { amount: toStroops(amount), assetCode: "USDC" },
+        amount: { amount: usdcToMinor(amount), assetCode: "USDC" },
         memo: memo || undefined,
       });
       const settledOnChain = po.settlement?.onChain ?? false;
@@ -117,7 +112,7 @@ export function Pay() {
                 {payee?.paymentAddress?.shielded ? (
                   <Row k="Recipient" v={<span className="font-mono text-[12px]">{formatAddress(payee.paymentAddress.shielded, 6, 6)}</span>} />
                 ) : null}
-                <Row k="Amount" v={<span className="font-display tnum">{fmtUsd(toStroops(amount))}</span>} />
+                <Row k="Amount" v={<span className="font-display tnum">{fmtUsd(usdcToMinor(amount))}</span>} />
                 {memo ? <Row k="Note" v={memo} /> : null}
                 <Row k="Fee" v={<span className="font-semibold text-success">Free</span>} />
                 <Row k="Arrives" v="In seconds" />
@@ -133,7 +128,7 @@ export function Pay() {
                   Back
                 </Button>
                 <Button className="flex-1" loading={busy} onClick={submit} data-testid="pay-submit">
-                  <ArrowUpRight size={16} /> Send {fmtUsd(toStroops(amount))} privately
+                  <ArrowUpRight size={16} /> Send {fmtUsd(usdcToMinor(amount))} privately
                 </Button>
               </div>
             </>
