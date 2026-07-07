@@ -1,0 +1,15 @@
+{
+  "name": "benzo-console-workspace",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "pnpm --filter @benzo/console-app dev",
+    "build": "pnpm --filter @benzo/console-app build",
+    "test": "pnpm -r test",
+    "lint": "biome lint ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "typescript": "^5.5.0"
+  }
+}
