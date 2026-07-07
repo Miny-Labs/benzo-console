@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+public/circuits/*.wasm
+public/circuits/*.zkey
+.DS_Store
