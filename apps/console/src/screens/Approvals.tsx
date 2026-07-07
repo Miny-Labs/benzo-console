@@ -1,7 +1,7 @@
 /**
  * Approvals - the dual-control release gate. Each payment awaiting approval shows
  * what it hides vs proves; Approve releases it and settles a real shielded
- * transfer on testnet (when a recipient @handle is attached). Calm tones; red is
+ * transfer on Avalanche (when a recipient @handle is attached). Calm tones; red is
  * for failure only.
  */
 import { useState } from "react";

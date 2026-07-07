@@ -4,12 +4,13 @@
  * compact "View on-chain" link that opens a modal showing the verification key id,
  * the verified verdict, the public inputs, and clickable links to the verifier
  * CONTRACT (explorerContractUrl) and the settlement/verification TX (explorerTxUrl)
- * on stellar.expert - so a viewer can independently confirm the claim.
+ * on the Avalanche explorer - so a viewer can independently confirm the claim.
  */
 import { useEffect, useState } from "react";
 import { ArrowUpRight, ShieldCheck, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { explorerContractUrl, explorerTxUrl, formatAddress } from "../lib/format";
+import { normalizeNetwork, NETWORK_LABEL } from "../lib/network";
 
 /** Normalized on-chain reference any prove/settle result can carry. */
 export interface OnChainRef {
@@ -21,7 +22,7 @@ export interface OnChainRef {
   verified?: boolean;
   /** the verifier contract id (C…) */
   verifier?: string;
-  /** "testnet" | "public" */
+  /** "fuji" | "avalanche" */
   network?: string;
   /** a settlement or verification tx hash, if any */
   txHash?: string;
@@ -45,7 +46,8 @@ function Row({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) 
 /** Inline "View on-chain ↗" trigger + the detail modal. */
 export function OnChainDetail({ refData, label = "View on-chain" }: { refData: OnChainRef; label?: string }) {
   const [open, setOpen] = useState(false);
-  const net = refData.network && refData.network.toLowerCase().includes("public") ? "public" : "testnet";
+  const net = normalizeNetwork(refData.network);
+  const networkLabel = net === "avalanche" ? "Avalanche Mainnet" : "Avalanche Fuji";
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
@@ -90,7 +92,7 @@ export function OnChainDetail({ refData, label = "View on-chain" }: { refData: O
                   {refData.vkId ? <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-primary">vk · {refData.vkId}</span> : null}
                 </div>
                 <div className="divide-y divide-border">
-                  {refData.network ? <Row k="Network" v={`Stellar ${net}`} /> : null}
+                  {refData.network ? <Row k="Network" v={networkLabel} /> : <Row k="Network" v={NETWORK_LABEL} />}
                   {(refData.publics ?? []).map((p) => <Row key={p.k} k={p.k} v={p.v} />)}
                   {refData.root ? <Row k="Merkle root" v={formatAddress(refData.root, 8, 6)} mono /> : null}
                   {refData.composeHash ? <Row k="Prover build hash" v={formatAddress(refData.composeHash, 8, 6)} mono /> : null}

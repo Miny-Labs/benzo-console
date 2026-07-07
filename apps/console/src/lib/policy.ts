@@ -6,7 +6,7 @@
  * are routing logic the BFF evaluates over the PLAINTEXT proposal (Benzo hides
  * those on-chain). The approve steps' `minApprovers` and the `releaseGate` are
  * the part that maps onto the GENUINELY-ENFORCED dual-control: org_account
- * threshold + the in-circuit joinsplit_org M-of-N (JSPLITORG, verified on testnet).
+ * threshold + the eERC private-transfer policy checks verified on Avalanche.
  */
 import type { ApprovalPolicy, ApprovalCondition, ApprovalStep } from "@benzo/types";
 import { fmtUsd } from "./format";

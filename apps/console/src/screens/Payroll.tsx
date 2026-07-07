@@ -1,7 +1,7 @@
 /**
  * Payroll - confidential batch runs. Each batch hides individual salaries on-chain
  * (one shielded transfer per person) while the employer can still prove the total.
- * Approve runs the real per-recipient joinsplits on testnet.
+ * Approve runs the per-recipient private eERC transfer workflow.
  */
 import { useState } from "react";
 import { CheckCheck, Download, ShieldCheck, Users } from "lucide-react";
@@ -178,7 +178,7 @@ export function Payroll() {
   function exportCsv(b: PayrollBatch) {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const rows = [
-      ["period", "contractor", "amount_stroops", "status", "tx_hash", "error"],
+      ["period", "contractor", "amount_units", "status", "tx_hash", "error"],
       ...b.lines.map((l) => [b.period, name(l.counterpartyId), l.amount, l.status, l.txHash ?? "", l.error ?? ""]),
     ];
     download(`benzo-payroll-${b.period}.csv`, rows.map((r) => r.map(esc).join(",")).join("\n"), "text/csv");

@@ -9,7 +9,7 @@ import { FileText, Send, Wallet, ShieldCheck } from "lucide-react";
 import type { Invoice, PaymentOrder } from "@benzo/types";
 import { api, type ApprovalProgressView, type OnChainRef } from "../lib/api";
 import { useConsole } from "../lib/store";
-import { fmtUsd, formatDate, friendlyError } from "../lib/format";
+import { USDC_SCALE, fmtUsd, formatDate, friendlyError } from "../lib/format";
 import { statusMeta } from "../lib/status";
 import { Page, Proving, Reveal, Stagger } from "../ui/motion";
 import { OnChainDetail } from "../ui/onchain";
@@ -89,7 +89,7 @@ export function Invoices() {
   const [netRes, setNetRes] = useState<{ onChain: boolean; net: string; wetPay: boolean; ref?: OnChainRef } | null>(null);
 
   function validateNetInput(): string | null {
-    const amount = /^\d+(\.\d{1,7})?$/;
+    const amount = /^\d+(\.\d{1,6})?$/;
     const left = weOwe.trim();
     const right = theyOwe.trim();
     if (!left || !right) return "Enter both invoice totals before proving the net.";
@@ -99,7 +99,7 @@ export function Invoices() {
     if (!Number.isFinite(leftNum) || !Number.isFinite(rightNum) || leftNum <= 0 || rightNum <= 0) {
       return "Both invoice totals must be greater than $0.";
     }
-    if (Math.round(leftNum * 1e7) === Math.round(rightNum * 1e7)) return "There is no net difference to settle.";
+    if (Math.round(leftNum * USDC_SCALE) === Math.round(rightNum * USDC_SCALE)) return "There is no net difference to settle.";
     return null;
   }
 

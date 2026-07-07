@@ -1,11 +1,15 @@
 /**
  * Display formatting for money, addresses, dates, and explorer links.
- * Amounts are minor units (USDC = 7 decimals on Stellar) as string|bigint.
+ * Amounts are USDC base units (6 decimals on Avalanche) as string|bigint.
  */
-import { NETWORK } from "./network";
+import { BENZO_EXPLORER_BY_NETWORK } from "@benzo/config";
+import { NETWORK, normalizeNetwork } from "./network";
 
-/** "12345670000" (7dp) -> "1,234.567" (trailing zeros trimmed, min 2 decimals). */
-export function formatMoney(minor: string | bigint, decimals = 7, code = "USDC"): string {
+export const USDC_DECIMALS = 6;
+export const USDC_SCALE = 10 ** USDC_DECIMALS;
+
+/** "1234567000" (6dp) -> "1,234.567" (trailing zeros trimmed, min 2 decimals). */
+export function formatMoney(minor: string | bigint, decimals = USDC_DECIMALS, code = "USDC"): string {
   let n: bigint;
   try { n = typeof minor === "bigint" ? minor : BigInt(minor || "0"); } catch { return String(minor); }
   const neg = n < 0n;
@@ -18,7 +22,7 @@ export function formatMoney(minor: string | bigint, decimals = 7, code = "USDC")
 }
 
 /** "$842,300.00" - dollar-prefixed, fixed 2 decimals (the dashboard headline form). */
-export function fmtUsd(minor: string | bigint, decimals = 7): string {
+export function fmtUsd(minor: string | bigint, decimals = USDC_DECIMALS): string {
   let n: bigint;
   try {
     n = typeof minor === "bigint" ? minor : BigInt(minor || "0");
@@ -33,7 +37,21 @@ export function fmtUsd(minor: string | bigint, decimals = 7): string {
   return `${neg ? "-" : ""}$${whole}.${cents}`;
 }
 
-/** "GABC…WXYZ" - truncate a Stellar address / hash for display. */
+export function usdcToMinor(human: string, decimals = USDC_DECIMALS): string {
+  const [whole = "0", frac = ""] = human.replace(/[$,]/g, "").trim().split(".");
+  return (BigInt(whole || "0") * 10n ** BigInt(decimals) + BigInt(frac.padEnd(decimals, "0").slice(0, decimals) || "0")).toString();
+}
+
+export function minorToUsdc(minor: string | string[], decimals = USDC_DECIMALS): string {
+  if (Array.isArray(minor)) return "";
+  const raw = BigInt(minor || "0");
+  const base = 10n ** BigInt(decimals);
+  const whole = raw / base;
+  const frac = (raw % base).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole.toString();
+}
+
+/** "0x1234…abcd" - truncate an EVM address / hash for display. */
 export function formatAddress(addr: string, head = 4, tail = 4): string {
   if (!addr) return "";
   return addr.length <= head + tail + 1 ? addr : `${addr.slice(0, head)}…${addr.slice(-tail)}`;
@@ -45,17 +63,17 @@ export function formatDate(ts: number | string | Date): string {
   return d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-// Default to the build's active network (NETWORK), never a hardcoded "testnet":
-// these links are the real settlement receipts, so on a mainnet/public build they
+// Default to the build's active network (NETWORK), never a hardcoded testnet:
+// these links are the real settlement receipts, so on a mainnet build they
 // must deep-link to the right explorer (a testnet default => "tx not found" => the
 // payment looks unverified). A caller can still pass an explicit network when it has one
 // (e.g. the on-chain ref's own network field).
 export function explorerTxUrl(hash: string, network: string = NETWORK): string {
-  return `https://stellar.expert/explorer/${network}/tx/${hash}`;
+  return `${BENZO_EXPLORER_BY_NETWORK[normalizeNetwork(network)]}/tx/${hash}`;
 }
 
 export function explorerContractUrl(id: string, network: string = NETWORK): string {
-  return `https://stellar.expert/explorer/${network}/contract/${id}`;
+  return `${BENZO_EXPLORER_BY_NETWORK[normalizeNetwork(network)]}/address/${id}`;
 }
 
 /**

@@ -3,20 +3,20 @@ import { explorerContractUrl, explorerTxUrl, fmtUsd, formatAddress, formatMoney 
 
 describe("console money formatting", () => {
   it("fmtUsd renders dollar-prefixed, fixed 2 decimals", () => {
-    expect(fmtUsd("8423000000000")).toBe("$842,300.00");
-    expect(fmtUsd("19500000")).toBe("$1.95");
-    expect(fmtUsd("35000000000")).toBe("$3,500.00");
+    expect(fmtUsd("842300000000")).toBe("$842,300.00");
+    expect(fmtUsd("1950000")).toBe("$1.95");
+    expect(fmtUsd("3500000000")).toBe("$3,500.00");
     expect(fmtUsd("0")).toBe("$0.00");
   });
   it("formatMoney keeps real precision with a code suffix", () => {
-    expect(formatMoney("1240500000")).toBe("124.05 USDC");
+    expect(formatMoney("124050000")).toBe("124.05 USDC");
   });
-  it("formatAddress truncates long Stellar addresses", () => {
-    expect(formatAddress("GA4R5FSOPHFY3EWHWILL43KEEEPKCTGC6EKVJJS3R63TMG2RYJLQ4OCS")).toBe("GA4R…4OCS");
+  it("formatAddress truncates long EVM addresses", () => {
+    expect(formatAddress("0x1234567890abcdef1234567890abcdef12345678")).toBe("0x12…5678");
     expect(formatAddress("short")).toBe("short");
   });
-  it("builds Stellar testnet explorer links by default", () => {
-    expect(explorerTxUrl("abc123")).toBe("https://stellar.expert/explorer/testnet/tx/abc123");
-    expect(explorerContractUrl("CDLZ...")).toBe("https://stellar.expert/explorer/testnet/contract/CDLZ...");
+  it("builds Avalanche Fuji explorer links by default", () => {
+    expect(explorerTxUrl("abc123")).toBe("https://testnet.snowtrace.io/tx/abc123");
+    expect(explorerContractUrl("0xabc")).toBe("https://testnet.snowtrace.io/address/0xabc");
   });
 });

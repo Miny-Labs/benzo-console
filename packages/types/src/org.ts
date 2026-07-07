@@ -1,4 +1,4 @@
-import type { MemberId, OrgId, ShieldedAddress, StellarAddress, Timestamp } from "./common.js";
+import type { EvmAddress, MemberId, OrgId, ShieldedAddress, Timestamp } from "./common.js";
 
 /** KYB lifecycle for the business entity. */
 export type KybStatus = "unverified" | "pending" | "approved" | "rejected";
@@ -95,8 +95,8 @@ export interface Member {
   status: MemberStatus;
   /** member's MVK public scalar (hex) — lets them decode in-scope notes */
   mvkPublic?: string;
-  /** signer G-address for multisig authorization (treasurer/approver) */
-  signerAddress?: StellarAddress;
+  /** signer EVM address for SIWE authorization (treasurer/approver) */
+  signerAddress?: EvmAddress;
   createdAt: Timestamp;
 }
 

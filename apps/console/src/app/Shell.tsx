@@ -1,6 +1,6 @@
 /**
  * Console shell - 240px sidebar (grouped nav with an Approvals badge), a top bar
- * (workspace switcher, ⌘K search, Live·testnet badge, mask-eye, bell, avatar),
+ * (workspace switcher, ⌘K search, live network badge, mask-eye, bell, avatar),
  * and the routed content area with the cursor-interactive canvas behind the cards.
  */
 import {
@@ -155,7 +155,7 @@ export function Shell() {
                 live ? "border-success/25 bg-success/10 text-[#1d7a52]" : "border-warning/30 bg-warning/12 text-[#9a6b12]"
               }`}
               data-testid="live-badge"
-              title={live ? `Payments settle on the Stellar ${NETWORK_LABEL} network` : "Live chain connection unavailable"}
+              title={live ? `Payments settle on ${NETWORK_LABEL}` : "Live chain connection unavailable"}
             >
               <span className={`h-[7px] w-[7px] rounded-full ${live ? "bg-success" : "bg-warning"}`} />
               {live ? `Live · ${NETWORK_LABEL}` : "Chain unavailable"}

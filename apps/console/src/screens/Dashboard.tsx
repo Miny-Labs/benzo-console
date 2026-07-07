@@ -1,14 +1,14 @@
 /**
  * Dashboard / Overview - the treasury metric (Provable chip + animated sparkline),
  * a "pending your approval" card, and a recent-activity table with amounts masked
- * by default (private by design). Everything settles on real testnet.
+ * by default (private by design). Everything settles on Avalanche/eERC.
  */
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Building2, Check, RefreshCw, ShieldCheck, UserPlus, Users, Wallet, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useReducedMotion } from "framer-motion";
 import { useConsole } from "../lib/store";
-import { fmtUsd, formatDate } from "../lib/format";
+import { USDC_SCALE, fmtUsd, formatDate } from "../lib/format";
 import { NETWORK_LABEL } from "../lib/network";
 import { Page, Stagger } from "../ui/motion";
 import { Button, Card, Pill, ShieldedBadge, StatusPill, Skeleton } from "../ui/primitives";
@@ -37,7 +37,7 @@ function useCountUp(target: number, durationMs = 1000): number {
 
 /**
  * First-run checklist - the bridge from onboarding to first value. Onboarding sets
- * up the org + treasury keys but the workspace is one un-met prerequisite away from
+ * provisions the org treasury but the workspace is one un-met prerequisite away from
  * a first payout: it needs funds and a distinct approver (maker-checker blocks the
  * first payout otherwise). Rather than letting the user discover that via an error,
  * we surface a guided checklist from REAL store state - each item flips to
@@ -119,14 +119,14 @@ export function Dashboard() {
       .filter((p) => p.settlement?.onChain === false)
       .map((p) => p.id),
   );
-  const targetDollars = Number(treasury?.totalHidden.amount ?? dashboard?.totalPosition.amount ?? "0") / 1e7;
+  const targetDollars = Number(treasury?.totalHidden.amount ?? dashboard?.totalPosition.amount ?? "0") / USDC_SCALE;
   const animatedTotal = useCountUp(targetDollars);
 
   return (
     <Page>
       <div className="mb-5">
         <h1 className="font-display text-2xl">Overview</h1>
-        <p className="mt-1 text-[13.5px] text-muted">Everything settles on real Stellar {NETWORK_LABEL} · amounts are private by default</p>
+        <p className="mt-1 text-[13.5px] text-muted">Everything settles on {NETWORK_LABEL} through eERC · amounts are private by default</p>
       </div>
 
       <FirstRunChecklist />
@@ -156,7 +156,7 @@ export function Dashboard() {
               <Skeleton className="mt-2 h-10 w-48" />
             ) : (
               <div className="font-display tnum mt-2 text-[40px] leading-none" data-testid="treasury-total">
-                {masked ? "••••••" : fmtUsd(String(Math.round(animatedTotal * 1e7)))}
+                {masked ? "••••••" : fmtUsd(String(Math.round(animatedTotal * USDC_SCALE)))}
               </div>
             )}
             <div className="mt-2 text-[12.5px] text-muted">Across all accounts · private by default</div>

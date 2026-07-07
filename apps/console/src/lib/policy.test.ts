@@ -6,7 +6,7 @@ const policy = (over: Partial<ApprovalPolicy> = {}): ApprovalPolicy => ({
   id: "pol_1",
   orgId: "org_1",
   name: "Large payments",
-  conditions: [{ field: "amount", operator: "gte", value: "50000000000" }], // $5,000
+  conditions: [{ field: "amount", operator: "gte", value: "5000000000" }], // $5,000
   steps: [{ role: "approver", mode: "any", minApprovers: 1 }],
   releaseGate: { role: "treasurer", mode: "all", minApprovers: 2 },
   reApprovalTriggers: ["amount", "counterparty"],
@@ -16,7 +16,7 @@ const policy = (over: Partial<ApprovalPolicy> = {}): ApprovalPolicy => ({
 
 describe("approval policy helpers (B4)", () => {
   it("labels an amount condition in dollars", () => {
-    expect(conditionLabel({ field: "amount", operator: "gte", value: "50000000000" })).toBe("amount ≥ $5,000.00");
+    expect(conditionLabel({ field: "amount", operator: "gte", value: "5000000000" })).toBe("amount ≥ $5,000.00");
   });
 
   it("labels a step with count, mode, and role", () => {

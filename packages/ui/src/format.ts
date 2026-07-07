@@ -2,11 +2,11 @@
  * Display/parse helpers for money and identifiers — pure, framework-agnostic, so
  * pay.benzo.xyz and work.benzo.xyz render amounts and addresses identically.
  *
- * On Stellar, USDC carries 7 decimals; the protocol moves base units (i128), so
+ * On Avalanche, USDC carries 6 decimals; the protocol moves base units, so
  * the UI converts at the edges only.
  */
 
-export const USDC_DECIMALS = 7;
+export const USDC_DECIMALS = 6;
 
 /** Format base-unit `amount` as a human string (no symbol unless asked). */
 export function formatUsdc(
@@ -48,7 +48,7 @@ export function parseUsdc(input: string, decimals = USDC_DECIMALS): bigint {
   return neg ? -value : value;
 }
 
-/** "GABCD…WXYZ" — middle-truncate a Stellar address/contract id. */
+/** "0x1234…abcd" — middle-truncate an EVM address/contract id. */
 export function truncateAddress(addr: string, head = 5, tail = 4): string {
   if (addr.length <= head + tail + 1) return addr;
   return `${addr.slice(0, head)}…${addr.slice(-tail)}`;

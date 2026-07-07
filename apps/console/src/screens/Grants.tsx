@@ -64,7 +64,8 @@ export function Grants() {
       setAtt(r);
       if (!r.live) toast({ title: "Not connected. Connect to generate a real attestation.", tone: "muted" });
       else {
-        const emptyPeriod = !r.onChain && !(r.sorobanPublics?.length) && Number(r.total ?? "0") === 0;
+        const publicInputs = r.publicInputs ?? r.sorobanPublics ?? [];
+        const emptyPeriod = !r.onChain && publicInputs.length === 0 && Number(r.total ?? "0") === 0;
         toast({
           title: r.onChain ? "Total proven on-chain" : emptyPeriod ? "No period notes to attest yet" : "Attestation was not verified on-chain",
           tone: r.onChain ? "success" : emptyPeriod ? "muted" : "danger",
@@ -144,10 +145,10 @@ export function Grants() {
           verifier: att.verifier,
           network: att.network,
           root: att.root,
-          publics: (att.sorobanPublics ?? []).map((v, i) => ({ k: i === 0 ? "Total (committed)" : `public[${i}]`, v })),
+          publics: (att.publicInputs ?? att.sorobanPublics ?? []).map((v, i) => ({ k: i === 0 ? "Total (committed)" : `public[${i}]`, v })),
         }
       : undefined;
-  const attHasProofInputs = !!att?.sorobanPublics?.length;
+  const attHasProofInputs = !!(att?.publicInputs ?? att?.sorobanPublics)?.length;
   const attIsEmptyPeriod = !!att && !att.onChain && !attHasProofInputs && Number(att.total ?? "0") === 0;
   const attTone = att?.onChain ? "success" : attIsEmptyPeriod ? "neutral" : "danger";
   const attClass = att?.onChain

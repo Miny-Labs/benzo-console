@@ -1,9 +1,9 @@
 import type {
   AccountId,
   CounterpartyId,
+  EvmAddress,
   Money,
   OrgId,
-  StellarAddress,
   Timestamp,
 } from "./common.js";
 import type { PaymentAddress } from "./org.js";
@@ -20,18 +20,18 @@ export interface Account {
   assetCode: string;
   /** the org's shielded address this account settles into */
   shieldedAddress?: string;
-  /** optional public Stellar address (for the deposit/withdraw edge) */
-  stellarAddress?: StellarAddress;
+  /** optional public EVM address (for the deposit/withdraw edge) */
+  evmAddress?: EvmAddress;
   createdAt: Timestamp;
 }
 
 /** How an external account is addressed (the MT-style discriminator). */
-export type AccountNumberType = "stellar" | "benzo_shielded" | "bank";
+export type AccountNumberType = "evm" | "benzo_shielded" | "bank";
 
 export interface ExternalAccount {
   id: string;
   accountNumberType: AccountNumberType;
-  /** Stellar/shielded address, or a tokenized bank reference */
+  /** EVM/shielded address, or a tokenized bank reference */
   address?: string;
   /** masked bank details for display (real details live in the provider) */
   bankLast4?: string;

@@ -41,7 +41,7 @@ export interface ClaimLink {
 /** A request to be paid (renders as a button / QR on any surface). */
 export interface RequestLink {
   type: "request";
-  /** @handle or G-address to pay */
+  /** @handle or EVM address to pay */
   to: string;
   amount?: string;
   asset?: string;
