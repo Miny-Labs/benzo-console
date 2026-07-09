@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Check, LockKeyhole, ReceiptText, Send } from "lucide-react";
 import { useReducedMotion } from "framer-motion";
-import type { PaymentState } from "@benzo/ui/payment-state";
+import type { PaymentPhase, PaymentState } from "@benzo/ui/payment-state";
 import {
   SEND_PHASE_SLOW_MS,
   SEND_RAIL_LABELS,
@@ -149,6 +149,19 @@ export function SendCeremony({
   );
 }
 
+// Ordered ceremony beats + a representative payment phase for each. When the
+// underlying machine JUMPS (all events dispatched in one batched render, so
+// React only ever renders building -> confirmed), the flooring must still walk
+// through the intermediate "settle" beat instead of mapping encrypt -> verify
+// directly. That honesty is the whole point of the ceremony.
+const CEREMONY_ORDER = ["encrypt", "settle", "verify"] as const;
+type OrderedPhase = (typeof CEREMONY_ORDER)[number];
+const PHASE_FOR_CEREMONY: Record<OrderedPhase, PaymentPhase> = {
+  encrypt: "proving",
+  settle: "submitting",
+  verify: "confirmed",
+};
+
 function useFlooredPaymentState(open: boolean, state: PaymentState, reducedMotion: boolean) {
   const [visibleState, setVisibleState] = useState(state);
   const phaseStartedAt = useRef(Date.now());
@@ -162,16 +175,26 @@ function useFlooredPaymentState(open: boolean, state: PaymentState, reducedMotio
 
     const currentPhase = ceremonyPhase(visibleState.phase);
     const nextPhase = ceremonyPhase(state.phase);
+    // At the target (or an error / reduced-motion short-circuit): reflect reality.
     if (currentPhase === nextPhase || nextPhase === "error" || reducedMotion) {
-      setVisibleState(state);
+      if (visibleState !== state) setVisibleState(state);
       if (currentPhase !== nextPhase) phaseStartedAt.current = Date.now();
       return;
     }
 
+    // Advance exactly ONE ceremony beat toward the target, holding the current
+    // beat for its floor. Re-running on visibleState change walks the remaining
+    // beats — so a batched encrypt -> confirmed jump still plays "Settling".
+    const ci = CEREMONY_ORDER.indexOf(currentPhase as OrderedPhase);
+    const ni = CEREMONY_ORDER.indexOf(nextPhase as OrderedPhase);
+    const stepPhase: OrderedPhase | typeof nextPhase = ci >= 0 && ni > ci + 1 ? CEREMONY_ORDER[ci + 1] : nextPhase;
+    const stepState: PaymentState =
+      stepPhase === nextPhase ? state : { ...state, phase: PHASE_FOR_CEREMONY[stepPhase as OrderedPhase] };
+
     const currentView = sendCeremonyView(visibleState, { reducedMotion });
     const wait = Math.max(currentView.floorMs - (Date.now() - phaseStartedAt.current), 0);
     const timer = window.setTimeout(() => {
-      setVisibleState(state);
+      setVisibleState(stepState);
       phaseStartedAt.current = Date.now();
     }, wait);
     return () => window.clearTimeout(timer);

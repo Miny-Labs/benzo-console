@@ -23,17 +23,25 @@ describe("SendCeremony", () => {
     expect(screen.getByText("12 payouts")).toBeInTheDocument();
   });
 
-  it("holds an observed phase for its floor before revealing the next phase", async () => {
+  it("plays the intermediate Settling beat even when the machine jumps straight to confirmed", async () => {
     vi.useFakeTimers();
     const { rerender } = render(<SendCeremony open state={{ phase: "building" }} />);
 
+    // A batched dispatch collapses building -> confirmed in a single render.
     rerender(<SendCeremony open state={{ phase: "confirmed" }} />);
     expect(screen.getByRole("heading", { name: "Encrypting your payment" })).toBeInTheDocument();
 
+    // After the encrypt floor, the Settling beat must appear — never skipped,
+    // or the ceremony would be lying about settlement.
     await act(async () => {
       vi.advanceTimersByTime(SEND_PHASE_FLOOR_MS.encrypt);
     });
+    expect(screen.getByRole("heading", { name: "Settling securely" })).toBeInTheDocument();
 
+    // Only after the settle floor does the verified receipt reveal.
+    await act(async () => {
+      vi.advanceTimersByTime(SEND_PHASE_FLOOR_MS.settle);
+    });
     expect(screen.getByRole("heading", { name: "Sent privately" })).toBeInTheDocument();
   });
 });
