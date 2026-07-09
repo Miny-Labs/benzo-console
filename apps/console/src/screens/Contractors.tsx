@@ -5,8 +5,7 @@
  * a run whose amounts are computed server-side from these rates (never typed in).
  */
 import { Fragment, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Check, Clock, Play, Upload } from "lucide-react";
+import { Check, Clock, Upload } from "lucide-react";
 import type { Counterparty } from "@benzo/types";
 import { api } from "../lib/api";
 import { useConsole } from "../lib/store";
@@ -16,12 +15,10 @@ import { Button, Card, EmptyState, Input, Modal, Pill, Skeleton, StatusPill, use
 
 type PayEvent = { period: string; amount: string; status: string; txHash?: string; batchId: string };
 
-const period = () => new Date().toISOString().slice(0, 7); // e.g. 2026-06
 const statuses: Counterparty["status"][] = ["draft", "invited", "pending_screening", "allowlisted", "blocked"];
 
 export function Contractors() {
   const toast = useToast();
-  const nav = useNavigate();
   const { counterparties, loading, refresh } = useConsole();
   const [importOpen, setImportOpen] = useState(false);
   const [csv, setCsv] = useState("");
@@ -131,26 +128,6 @@ export function Contractors() {
     }
   }
 
-  async function runPayroll() {
-    if (payable.length === 0) return;
-    setBusy("run");
-    try {
-      // Amounts are COMPUTED server-side from each rate card - we only choose who's in.
-      const batch = await api.createPayroll({
-        period: period(),
-        source: "manual",
-        lines: payable.map((c) => ({ counterpartyId: c.id })),
-      });
-      toast({ title: `${period()} run drafted: ${batch.lines.length} contractors · ${fmtUsd(batch.total.amount)}`, tone: "success" });
-      await refresh();
-      nav("/payroll");
-    } catch (e) {
-      toast({ title: friendlyError(e), tone: "danger" });
-    } finally {
-      setBusy(null);
-    }
-  }
-
   return (
     <Screen>
       <div className="mb-5 flex items-start justify-between">
@@ -161,9 +138,6 @@ export function Contractors() {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setImportOpen(true)} data-testid="import-roster">
             <Upload size={15} /> Import CSV
-          </Button>
-          <Button onClick={runPayroll} loading={busy === "run"} disabled={payable.length === 0} data-testid="run-month">
-            <Play size={15} /> Run {period()} payroll
           </Button>
         </div>
       </div>
