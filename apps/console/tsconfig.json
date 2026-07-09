@@ -16,6 +16,8 @@
     "paths": {
       "@benzo/config": ["../../packages/config/src/index.ts"],
       "@benzo/links": ["../../packages/links/src/index.ts"],
+      "@benzo/ui/payment-state": ["../../packages/ui/src/payment-state.ts"],
+      "@benzo/ui/send-sequence": ["../../packages/ui/src/send-sequence.ts"],
       "@benzo/types": ["../../packages/types/src/index.ts"]
     }
   },
