@@ -4,6 +4,7 @@ import { AlertTriangle, Check, LockKeyhole, ReceiptText, Send } from "lucide-rea
 import { useReducedMotion } from "framer-motion";
 import type { PaymentPhase, PaymentState } from "@benzo/ui/payment-state";
 import {
+  type CeremonyPhase,
   SEND_PHASE_SLOW_MS,
   SEND_RAIL_LABELS,
   ceremonyPhase,
@@ -18,10 +19,19 @@ type CeremonyAction = {
   variant?: "primary" | "outline" | "ghost" | "danger";
 };
 
+/**
+ * Per-phase copy override. Defaults to the send wording baked into
+ * `sendCeremonyView`; a prove/disclose flow can pass its own headlines
+ * (e.g. "Folding the proof") without re-implementing the ceremony. Any phase or
+ * field left out falls back to the send default, so this stays backward-compatible.
+ */
+export type CeremonyTitles = Partial<Record<CeremonyPhase, { title?: ReactNode; sub?: ReactNode }>>;
+
 export function SendCeremony({
   open,
   state,
   eyebrow = "Private send",
+  titles,
   details,
   receipt,
   primaryAction,
@@ -30,6 +40,7 @@ export function SendCeremony({
   open: boolean;
   state: PaymentState;
   eyebrow?: ReactNode;
+  titles?: CeremonyTitles;
   details?: ReactNode;
   receipt?: ReactNode;
   primaryAction?: CeremonyAction;
@@ -38,6 +49,11 @@ export function SendCeremony({
   const reduce = useReducedMotion() ?? false;
   const visibleState = useFlooredPaymentState(open, state, reduce);
   const view = sendCeremonyView(visibleState, { prover: "local", reducedMotion: reduce });
+  const override = titles?.[view.phase];
+  const title = override?.title ?? view.title;
+  // The error sub carries the real failure message, so only override it when a
+  // caller explicitly provides one for this phase.
+  const sub = override?.sub ?? view.sub;
   const [lastStep, setLastStep] = useState(0);
   const [slow, setSlow] = useState(false);
 
@@ -84,16 +100,16 @@ export function SendCeremony({
               <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
                 <CeremonyGlyph phase={view.phase} animate={view.animate} />
                 <motion.h2
-                  key={view.title}
+                  key={view.phase}
                   className="mt-7 font-display text-3xl text-white"
                   initial={view.animate ? { opacity: 0, y: 8 } : false}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.28, ease: EASE }}
                 >
-                  {view.title}
+                  {title}
                 </motion.h2>
                 <p className={`mt-2 max-w-md text-sm leading-relaxed ${view.failed ? "text-danger" : "text-white/64"}`}>
-                  {view.sub}
+                  {sub}
                 </p>
                 {slow ? (
                   <p className="mt-3 text-[12.5px] text-white/48">

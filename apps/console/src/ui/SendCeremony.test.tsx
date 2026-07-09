@@ -8,6 +8,21 @@ describe("SendCeremony", () => {
     vi.useRealTimers();
   });
 
+  it("overrides the phase headline when titles are provided, falling back per field", () => {
+    render(
+      <SendCeremony
+        open
+        state={{ phase: "building" }}
+        titles={{ encrypt: { title: "Loading notes" } }}
+      />,
+    );
+
+    // Prove-worded headline replaces the send default…
+    expect(screen.getByRole("heading", { name: "Loading notes" })).toBeInTheDocument();
+    // …but an un-overridden field (sub) still falls back to the send wording.
+    expect(screen.getByText("Proving privately with the local prover")).toBeInTheDocument();
+  });
+
   it("renders the shared send projection with caller-provided details", () => {
     render(
       <SendCeremony
