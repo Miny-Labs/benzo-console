@@ -18,7 +18,7 @@
  * still a real Groth16 proof verified on-chain, every result carries an on-chain
  * reference you can re-verify.
  */
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { ArrowDownToLine, ArrowUpRight, Eye, EyeOff, QrCode as QrIcon, Send, ShieldCheck, Wallet } from "lucide-react";
 import { useReducedMotion } from "framer-motion";
 import { initialPaymentState, isInFlight, paymentReducer } from "@benzo/ui/payment-state";
@@ -80,6 +80,7 @@ export function Treasury() {
 
   async function fund() {
     dispatchFund({ type: "START" });
+    let confirmed = false;
     try {
       const r = await api.fundTreasury(fundAmt);
       if (r.onChain) {
@@ -89,7 +90,7 @@ export function Treasury() {
         dispatchFund({ type: "SUBMITTED", txHash: r.txHash ?? "" });
         dispatchFund({ type: "CONFIRMED", result: r });
         toast({ title: `Made private · ${fundAmt} USDC`, tone: "success" });
-        await Promise.all([refresh(), loadPublic()]);
+        confirmed = true;
       } else {
         dispatchFund({ type: "FAIL", error: r.error ?? "Couldn't move to Private on-chain" });
         toast({ title: r.error ?? "Couldn't move to Private on-chain", tone: "danger" });
@@ -97,6 +98,12 @@ export function Treasury() {
     } catch (e) {
       dispatchFund({ type: "FAIL", error: friendlyError(e) });
       toast({ title: friendlyError(e), tone: "danger" });
+    }
+    // Refresh the balances OUTSIDE the try above: the shield already settled and
+    // its confirmed receipt is showing, so a transient refresh error must never
+    // dispatch FAIL and flip a genuinely-confirmed ceremony to a failed state.
+    if (confirmed) {
+      await Promise.all([refresh(), loadPublic()]).catch(() => {});
     }
   }
 
@@ -164,6 +171,19 @@ export function Treasury() {
   const [proveResult, setProveResult] = useState<ProveResult | null>(null);
   const busyProve = isInFlight(proveState);
   const activeDisclosure = DISCLOSURES.find((d) => d.id === disclose) ?? DISCLOSURES[0];
+
+  // Full ARIA radiogroup nav for the disclosure picker: roving tabIndex (single
+  // tab stop) + arrow keys move selection and focus between the options.
+  const discloseRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  function onDiscloseKeyDown(e: React.KeyboardEvent<HTMLButtonElement>, index: number) {
+    let next: number;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") next = (index + 1) % DISCLOSURES.length;
+    else if (e.key === "ArrowUp" || e.key === "ArrowLeft") next = (index - 1 + DISCLOSURES.length) % DISCLOSURES.length;
+    else return;
+    e.preventDefault();
+    setDisclose(DISCLOSURES[next].id);
+    discloseRefs.current[next]?.focus();
+  }
 
   async function runProof() {
     dispatchProve({ type: "START" });
@@ -391,15 +411,20 @@ export function Treasury() {
             </p>
 
             <div className="mt-4 grid gap-2" role="radiogroup" aria-label="What to disclose">
-              {DISCLOSURES.map((d) => {
+              {DISCLOSURES.map((d, index) => {
                 const selected = disclose === d.id;
                 return (
                   <button
                     key={d.id}
+                    ref={(el) => {
+                      discloseRefs.current[index] = el;
+                    }}
                     type="button"
                     role="radio"
                     aria-checked={selected}
+                    tabIndex={selected ? 0 : -1}
                     onClick={() => setDisclose(d.id)}
+                    onKeyDown={(e) => onDiscloseKeyDown(e, index)}
                     disabled={busyProve}
                     data-testid={`disclose-${d.id}`}
                     className={`rounded-xl border px-3.5 py-3 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60 ${
@@ -611,7 +636,10 @@ function FundReceipt({ txHash }: { txHash?: string }) {
   );
 }
 
-/** Auditor receipt: the verdict + the Merkle root flipping into view + drill-down. */
+/**
+ * Auditor receipt: the verdict + the Merkle root flipping into view + drill-down.
+ * Only rendered on the confirmed on-chain path, so the proof is always verified.
+ */
 function ProveReceipt({ result, reduce }: { result: ProveResult; reduce: boolean }) {
   return (
     <div className="space-y-2">
@@ -632,7 +660,7 @@ function ProveReceipt({ result, reduce }: { result: ProveResult; reduce: boolean
         </motion.div>
       ) : null}
       <div className="flex items-center justify-between gap-2 text-white/60">
-        <span>{result.onChain ? "Verified on-chain. Anyone can re-check it." : "Proof was not verified on-chain."}</span>
+        <span>Verified on-chain. Anyone can re-check it.</span>
         {result.ref ? <OnChainDetail refData={result.ref} /> : null}
       </div>
     </div>

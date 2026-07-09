@@ -60,6 +60,54 @@ describe("Treasury", () => {
     expect(screen.queryByTestId("prove-min")).not.toBeInTheDocument();
   });
 
+  it("navigates the disclosure radiogroup with arrow keys and roving tabindex", async () => {
+    render(<Treasury />);
+    await act(async () => {}); // flush the mount-time public-balance load
+
+    const reserves = screen.getByTestId("disclose-reserves");
+    const total = screen.getByTestId("disclose-total");
+    // Reserves is the selected single tab stop; the others are out of tab order.
+    expect(reserves).toHaveAttribute("aria-checked", "true");
+    expect(reserves).toHaveAttribute("tabindex", "0");
+    expect(total).toHaveAttribute("tabindex", "-1");
+
+    // ArrowDown moves selection (and the tab stop) to the next option.
+    fireEvent.keyDown(reserves, { key: "ArrowDown" });
+    expect(total).toHaveAttribute("aria-checked", "true");
+    expect(total).toHaveAttribute("tabindex", "0");
+    expect(reserves).toHaveAttribute("tabindex", "-1");
+    expect(screen.queryByTestId("prove-min")).not.toBeInTheDocument();
+
+    // ArrowUp wraps back to reserves.
+    fireEvent.keyDown(total, { key: "ArrowUp" });
+    expect(reserves).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByTestId("prove-min")).toBeInTheDocument();
+  });
+
+  it("keeps a confirmed shield confirmed even if the post-settle refresh fails", async () => {
+    vi.useFakeTimers();
+    apiMock.fundTreasury.mockResolvedValueOnce({ onChain: true, txHash: "0xabc" });
+    refreshMock.mockRejectedValueOnce(new Error("network hiccup")); // transient refresh error
+
+    render(<Treasury />);
+    fireEvent.click(screen.getByTestId("fund-treasury"));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("fund-confirm"));
+    });
+
+    // Walk the ceremony floors to the verified receipt.
+    await act(async () => {
+      vi.advanceTimersByTime(SEND_PHASE_FLOOR_MS.encrypt);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(SEND_PHASE_FLOOR_MS.settle);
+    });
+
+    // The refresh rejected, but the settled shield still shows its receipt — not a failure.
+    expect(screen.getByText("Moved to Private on-chain")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Couldn't send" })).not.toBeInTheDocument();
+  });
+
   it("runs the picked disclosure through the shared ceremony", async () => {
     apiMock.proveSolvency.mockReturnValueOnce(new Promise(() => {})); // stays in flight
     render(<Treasury />);
