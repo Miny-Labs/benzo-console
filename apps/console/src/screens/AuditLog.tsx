@@ -13,6 +13,7 @@ import type { LedgerEntry, LedgerSourceType } from "@benzo/types";
 import { initialPaymentState, paymentReducer } from "@benzo/ui/payment-state";
 import { api, type PrivateAuditAnchorResponse, type PrivateAuditPacketResponse } from "../lib/api";
 import { explorerTxUrl, fmtUsd, formatAddress, formatDate, friendlyError } from "../lib/format";
+import { CeremonyRow } from "../ui/CeremonyRow";
 import { Screen, Stagger } from "../ui/motion";
 import { SendCeremony, type CeremonyTitles } from "../ui/SendCeremony";
 import { Button, Card, EmptyState, Pill, Skeleton } from "../ui/primitives";
@@ -81,7 +82,8 @@ export function AuditLog() {
       const chain = await api.ledgerVerify();
       setIntegrity(chain);
       if (!chain.ok) {
-        dispatchPacket({ type: "FAIL", error: `Tampering detected at entry #${chain.brokenAt}. The chain is broken from there on.` });
+        const at = chain.brokenAt != null ? `entry #${chain.brokenAt}` : "an entry";
+        dispatchPacket({ type: "FAIL", error: `Tampering detected at ${at}. The chain is broken from there on.` });
         return;
       }
       dispatchPacket({ type: "WITNESS_READY" });
@@ -89,7 +91,8 @@ export function AuditLog() {
       const built = await api.privateAuditPacket();
       setPacket(built.packet);
       if (!built.integrity.ok) {
-        dispatchPacket({ type: "FAIL", error: `The private event chain failed integrity at ${built.integrity.brokenAt}.` });
+        const at = built.integrity.brokenAt != null ? `entry #${built.integrity.brokenAt}` : "an entry";
+        dispatchPacket({ type: "FAIL", error: `The private event chain failed integrity at ${at}.` });
         return;
       }
       dispatchPacket({ type: "PROOF_READY" });
@@ -241,14 +244,5 @@ export function AuditLog() {
         </Stagger>
       )}
     </Screen>
-  );
-}
-
-function CeremonyRow({ k, v }: { k: string; v: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="flex-none text-white/48">{k}</span>
-      <span className="min-w-0 truncate text-right font-semibold text-white">{v}</span>
-    </div>
   );
 }

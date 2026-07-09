@@ -11,6 +11,7 @@ import { api, type OnChainRef } from "../lib/api";
 import { validateViewingGrantForm } from "../lib/grants";
 import { useConsole } from "../lib/store";
 import { fmtUsd, formatAddress, formatDate, friendlyError } from "../lib/format";
+import { CeremonyRow } from "../ui/CeremonyRow";
 import { Screen, Stagger } from "../ui/motion";
 import { OnChainDetail } from "../ui/onchain";
 import { SendCeremony, type CeremonyTitles } from "../ui/SendCeremony";
@@ -158,7 +159,7 @@ export function Grants() {
       <SendCeremony
         open={attState.phase !== "idle"}
         state={attState}
-        eyebrow="Auditor packet"
+        eyebrow="Period attestation"
         titles={ATTEST_TITLES}
         details={
           <>
@@ -320,14 +321,5 @@ export function Grants() {
         </p>
       </Modal>
     </Screen>
-  );
-}
-
-function CeremonyRow({ k, v }: { k: string; v: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="flex-none text-white/48">{k}</span>
-      <span className="min-w-0 truncate text-right font-semibold text-white">{v}</span>
-    </div>
   );
 }
