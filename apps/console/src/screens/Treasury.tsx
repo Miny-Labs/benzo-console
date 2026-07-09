@@ -6,24 +6,46 @@
  *     paid privately Benzo-to-Benzo, provable on demand without revealing it.
  *   • Public - plain liquid USDC at the org's own address. This is what any
  *     external wallet or exchange sends to and receives from.
- * Convert: "Make private" (Public -> pool / shield = api.fundTreasury). There's
- * no "Make public" for the org treasury (M-of-N notes have no direct pool ->
- * public unshield), so it isn't offered. Send to a wallet is a real on-chain USDC
- * payment from Public; Receive shows the address + QR.
+ * Convert: "Make private" (Public -> pool / shield = api.fundTreasury) plays a
+ * full-screen shield cinematic (the shared SendCeremony, payment-state driven).
+ * There's no "Make public" for the org treasury (M-of-N notes have no direct
+ * pool -> public unshield), so it isn't offered. Send to a wallet is a real
+ * on-chain USDC payment from Public; Receive shows the address + QR.
  *
- * The prove actions below stay unchanged: each is a real Groth16 proof verified
- * on-chain, every result carries an on-chain reference you can re-verify.
+ * Prove to an auditor: the former three prove cards (reserves / exact total /
+ * solvency) collapse into ONE surface - pick what to disclose, then a shared
+ * "proving -> verified on-chain" reveal flips the Merkle root into view. Each is
+ * still a real Groth16 proof verified on-chain, every result carries an on-chain
+ * reference you can re-verify.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { ArrowDownToLine, ArrowUpRight, Eye, EyeOff, QrCode as QrIcon, Send, ShieldCheck, Wallet } from "lucide-react";
+import { useReducedMotion } from "framer-motion";
+import { initialPaymentState, isInFlight, paymentReducer } from "@benzo/ui/payment-state";
 import { api, type OnChainRef } from "../lib/api";
 import { useConsole } from "../lib/store";
 import { explorerTxUrl, fmtUsd, formatAddress, friendlyError, usdcToMinor } from "../lib/format";
 import { NETWORK_LABEL } from "../lib/network";
-import { Screen, Proving, Reveal, Stagger } from "../ui/motion";
+import { EASE, motion, Screen, Reveal, Stagger } from "../ui/motion";
 import { OnChainDetail } from "../ui/onchain";
+import { SendCeremony } from "../ui/SendCeremony";
 import { QrCode } from "../ui/qr";
 import { AddressDisplay, Button, Card, CopyButton, Input, Modal, Pill, Skeleton, useToast } from "../ui/primitives";
+
+/** The three things a treasury can prove to an auditor — one surface, one ceremony. */
+type Disclosure = "reserves" | "total" | "solvency";
+const DISCLOSURES: Array<{ id: Disclosure; title: string; blurb: string }> = [
+  { id: "reserves", title: "Reserves clear a floor", blurb: "Prove the treasury holds at least a chosen amount. The real figure stays private." },
+  { id: "total", title: "Exact total", blurb: "Disclose the precise sum of your shielded notes. Individual amounts stay hidden." },
+  { id: "solvency", title: "Solvent (assets ≥ liabilities)", blurb: "Prove the treasury covers pending payroll + open invoices. Both stay hidden." },
+];
+
+/** What the shared ceremony needs to render the auditor reveal + on-chain receipt. */
+interface ProveResult {
+  headline: string;
+  onChain: boolean;
+  ref?: OnChainRef;
+}
 
 export function Treasury() {
   const toast = useToast();
@@ -46,29 +68,35 @@ export function Treasury() {
     void loadPublic();
   }, []);
 
+  const reduce = useReducedMotion() ?? false;
+
   // ---- Make private (Fund / shield): Public -> pool -------------------------
+  // Full-screen shield cinematic: the shared payment-state ceremony walks
+  // encrypt -> settle -> verify (with floors) and ends on the on-chain receipt.
   const [fundAmt, setFundAmt] = useState("0.20");
-  const [busyFund, setBusyFund] = useState(false);
   const [confirmFund, setConfirmFund] = useState(false);
-  const [fundResult, setFundResult] = useState<{ onChain: boolean; txHash?: string; error?: string } | null>(null);
+  const [fundState, dispatchFund] = useReducer(paymentReducer, initialPaymentState);
+  const busyFund = isInFlight(fundState);
 
   async function fund() {
-    setBusyFund(true);
-    setFundResult(null);
+    dispatchFund({ type: "START" });
     try {
       const r = await api.fundTreasury(fundAmt);
       if (r.onChain) {
-        setFundResult({ onChain: true, txHash: r.txHash });
+        // Walk the ceremony honestly: the flooring still plays the Settling beat.
+        dispatchFund({ type: "WITNESS_READY" });
+        dispatchFund({ type: "PROOF_READY" });
+        dispatchFund({ type: "SUBMITTED", txHash: r.txHash ?? "" });
+        dispatchFund({ type: "CONFIRMED", result: r });
         toast({ title: `Made private · ${fundAmt} USDC`, tone: "success" });
         await Promise.all([refresh(), loadPublic()]);
       } else {
-        setFundResult({ onChain: false, error: r.error ?? "Couldn't move to Private on-chain" });
+        dispatchFund({ type: "FAIL", error: r.error ?? "Couldn't move to Private on-chain" });
         toast({ title: r.error ?? "Couldn't move to Private on-chain", tone: "danger" });
       }
     } catch (e) {
+      dispatchFund({ type: "FAIL", error: friendlyError(e) });
       toast({ title: friendlyError(e), tone: "danger" });
-    } finally {
-      setBusyFund(false);
     }
   }
 
@@ -127,55 +155,60 @@ export function Treasury() {
     }
   }
 
-  // ---- ZK prove actions (unchanged) ----------------------------------------
+  // ---- Prove to an auditor (one surface, pick what to disclose) -------------
+  // The three former prove cards (reserves / exact total / solvency) collapse
+  // into a single action sharing one "proving -> verified on-chain" ceremony.
   const [min, setMin] = useState("100000");
-  const [busy, setBusy] = useState(false);
-  const [proof, setProof] = useState<{ holds: boolean; onChain: boolean; ref?: OnChainRef } | null>(null);
-  const [busyTotal, setBusyTotal] = useState(false);
-  const [totalProof, setTotalProof] = useState<{ total: string; onChain: boolean; ref?: OnChainRef } | null>(null);
-  const [busySolv, setBusySolv] = useState(false);
-  const [solvProof, setSolvProof] = useState<{ solvent: boolean; onChain: boolean; liabilities: string; ref?: OnChainRef } | null>(null);
+  const [disclose, setDisclose] = useState<Disclosure>("reserves");
+  const [proveState, dispatchProve] = useReducer(paymentReducer, initialPaymentState);
+  const [proveResult, setProveResult] = useState<ProveResult | null>(null);
+  const busyProve = isInFlight(proveState);
+  const activeDisclosure = DISCLOSURES.find((d) => d.id === disclose) ?? DISCLOSURES[0];
 
-  async function prove() {
-    setBusy(true);
-    setProof(null);
+  async function runProof() {
+    dispatchProve({ type: "START" });
+    setProveResult(null);
     try {
-      const minUnits = usdcToMinor(min);
-      const r = await api.proveBalance(minUnits);
-      setProof({ holds: r.holds, onChain: r.onChain, ref: r.ref ? { ...r.ref, label: "Reserves proof" } : undefined });
-      toast({ title: r.holds ? (r.onChain ? "Reserves verified on-chain" : "Proof was not verified on-chain") : "Below the floor (proven)", tone: r.holds && r.onChain ? "success" : "danger" });
+      let headline: string;
+      let onChain: boolean;
+      let ref: OnChainRef | undefined;
+      let ok: boolean;
+      if (disclose === "reserves") {
+        const minUnits = usdcToMinor(min);
+        const r = await api.proveBalance(minUnits);
+        onChain = r.onChain;
+        ok = r.holds;
+        ref = r.ref ? { ...r.ref, label: "Reserves proof" } : undefined;
+        headline = r.holds ? `Holds ≥ ${fmtUsd(minUnits)}` : "Below the requested floor";
+      } else if (disclose === "total") {
+        const r = await api.proveTotal();
+        onChain = r.onChain;
+        ok = r.onChain;
+        ref = r.ref ? { ...r.ref, label: "Period total proof" } : undefined;
+        headline = `Total: ${fmtUsd(r.total)}`;
+      } else {
+        const r = await api.proveSolvency();
+        onChain = r.onChain;
+        ok = r.solvent;
+        ref = r.ref ? { ...r.ref, label: "Solvency proof" } : undefined;
+        headline = r.solvent ? "Solvent — assets cover all liabilities" : "Not solvent — liabilities exceed treasury";
+      }
+      setProveResult({ headline, onChain, ref });
+      if (onChain) {
+        // The proof cleared the on-chain verifier: play the verified reveal
+        // (which flips the Merkle root into view). The verdict lives in `headline`.
+        dispatchProve({ type: "WITNESS_READY" });
+        dispatchProve({ type: "PROOF_READY" });
+        dispatchProve({ type: "SUBMITTED", txHash: ref?.txHash ?? "" });
+        dispatchProve({ type: "CONFIRMED", result: ref });
+        toast({ title: ok ? `${headline} · verified on-chain` : `${headline} · proven on-chain`, tone: "success" });
+      } else {
+        dispatchProve({ type: "FAIL", error: "Proof was not verified on-chain" });
+        toast({ title: "Proof was not verified on-chain", tone: "danger" });
+      }
     } catch (e) {
+      dispatchProve({ type: "FAIL", error: friendlyError(e) });
       toast({ title: friendlyError(e), tone: "danger" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function proveSolvent() {
-    setBusySolv(true);
-    setSolvProof(null);
-    try {
-      const r = await api.proveSolvency();
-      setSolvProof({ ...r, ref: r.ref ? { ...r.ref, label: "Solvency proof" } : undefined });
-      toast({ title: r.onChain ? (r.solvent ? "Solvency proven on-chain" : "Not solvent (proven)") : "Proof was not verified on-chain", tone: r.solvent && r.onChain ? "success" : "danger" });
-    } catch (e) {
-      toast({ title: friendlyError(e), tone: "danger" });
-    } finally {
-      setBusySolv(false);
-    }
-  }
-
-  async function proveExactTotal() {
-    setBusyTotal(true);
-    setTotalProof(null);
-    try {
-      const r = await api.proveTotal();
-      setTotalProof({ ...r, ref: r.ref ? { ...r.ref, label: "Period total proof" } : undefined });
-      toast({ title: r.onChain ? "Total proven on-chain" : "Proof was not verified on-chain", tone: r.onChain ? "success" : "danger" });
-    } catch (e) {
-      toast({ title: friendlyError(e), tone: "danger" });
-    } finally {
-      setBusyTotal(false);
     }
   }
 
@@ -183,6 +216,53 @@ export function Treasury() {
 
   return (
     <Screen>
+      {/* Make private: full-screen shield cinematic (coin -> encrypted pool). */}
+      <SendCeremony
+        open={fundState.phase !== "idle"}
+        state={fundState}
+        eyebrow="Make private"
+        details={
+          <>
+            <CeremonyRow k="Amount" v={fmtUsd(usdcToMinor(fundAmt))} />
+            <CeremonyRow k="From" v="Public" />
+            <CeremonyRow k="Into" v="Private pool (M-of-N note)" />
+          </>
+        }
+        receipt={fundState.phase === "confirmed" ? <FundReceipt txHash={fundState.txHash} /> : undefined}
+        primaryAction={
+          fundState.phase === "confirmed" || fundState.phase === "failed"
+            ? {
+                label: fundState.phase === "confirmed" ? "Done" : "Close",
+                onClick: () => dispatchFund({ type: "RESET" }),
+                variant: fundState.phase === "failed" ? "danger" : "primary",
+              }
+            : undefined
+        }
+      />
+
+      {/* Prove to an auditor: shared "proving -> verified on-chain" reveal. */}
+      <SendCeremony
+        open={proveState.phase !== "idle"}
+        state={proveState}
+        eyebrow="Prove to an auditor"
+        details={
+          <>
+            <CeremonyRow k="Disclosing" v={activeDisclosure.title} />
+            {disclose === "reserves" ? <CeremonyRow k="Floor" v={fmtUsd(usdcToMinor(min))} /> : null}
+          </>
+        }
+        receipt={proveState.phase === "confirmed" && proveResult ? <ProveReceipt result={proveResult} reduce={reduce} /> : undefined}
+        primaryAction={
+          proveState.phase === "confirmed" || proveState.phase === "failed"
+            ? {
+                label: proveState.phase === "confirmed" ? "Done" : "Close",
+                onClick: () => dispatchProve({ type: "RESET" }),
+                variant: proveState.phase === "failed" ? "danger" : "primary",
+              }
+            : undefined
+        }
+      />
+
       <div className="mb-5">
         <h1 className="font-display text-2xl">Treasury</h1>
         <p className="mt-1 text-[13.5px] text-muted">Two balances · Private stays hidden and provable · Public sends to and receives from any wallet</p>
@@ -254,42 +334,11 @@ export function Treasury() {
                   label="Amount (USDC)"
                   inputMode="decimal"
                   value={fundAmt}
-                  onChange={(e) => {
-                    setFundResult(null);
-                    setFundAmt(e.target.value.replace(/[^0-9.]/g, ""));
-                  }}
+                  onChange={(e) => setFundAmt(e.target.value.replace(/[^0-9.]/g, ""))}
                   data-testid="fund-amount"
                 />
               </div>
-              {busyFund ? (
-                <Proving className="mt-4" steps={["Moving USDC into the private pool", `Settling on ${NETWORK_LABEL}`]} />
-              ) : (
-                <Button className="mt-4 w-full" onClick={() => setConfirmFund(true)} disabled={!(Number(fundAmt) > 0)} data-testid="fund-treasury">Make private</Button>
-              )}
-              {fundResult ? (
-                <Reveal
-                  tone={fundResult.onChain ? "success" : "danger"}
-                  className={`mt-4 rounded-lg border px-4 py-3 ${fundResult.onChain ? "border-success/30 bg-success/8" : "border-danger/30 bg-danger/8"}`}
-                  data-testid="fund-result"
-                >
-                  {fundResult.onChain ? (
-                    <>
-                      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[#1d7a52]">
-                        <ShieldCheck size={14} /> Moved to Private on-chain
-                      </div>
-                      {fundResult.txHash ? (
-                        <a href={explorerTxUrl(fundResult.txHash)} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline">
-                          View on explorer <ArrowUpRight size={12} />
-                        </a>
-                      ) : null}
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[#b4232a]">
-                      <ShieldCheck size={14} /> {fundResult.error ?? "Move to Private failed on-chain"}
-                    </div>
-                  )}
-                </Reveal>
-              ) : null}
+              <Button className="mt-4 w-full" onClick={() => setConfirmFund(true)} disabled={busyFund || !(Number(fundAmt) > 0)} data-testid="fund-treasury">Make private</Button>
             </Card>
           </div>
 
@@ -331,84 +380,61 @@ export function Treasury() {
           )}
         </div>
 
-        {/* right: ZK prove cards (unchanged) */}
+        {/* right: one auditor-disclosure surface (was three prove cards) */}
         <div className="space-y-4">
           <Card className="p-5">
             <div className="flex items-center gap-2 text-[14px] font-semibold">
-              <ShieldCheck size={16} className="text-primary" /> Prove reserves
+              <ShieldCheck size={16} className="text-primary" /> Prove to an auditor
             </div>
             <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
-              Prove to a lender or your board that the treasury clears a covenant floor - verifiable on-chain. The real figure stays private.
+              Pick what to disclose. Benzo builds a real Groth16 proof and verifies it on-chain - the underlying balances stay private, and every result folds to a Merkle root anyone can re-check.
             </p>
-            <div className="mt-4">
-              <Input label="Prove we hold at least (USDC)" inputMode="decimal" value={min} onChange={(e) => setMin(e.target.value.replace(/[^0-9.]/g, ""))} data-testid="prove-min" />
-            </div>
-            {busy ? (
-              <Proving className="mt-4" steps={["Building witness", "Generating Groth16 proof", "Verifying on-chain"]} />
-            ) : (
-              <Button className="mt-4 w-full" onClick={prove} data-testid="prove-balance">Generate proof</Button>
-            )}
-            {proof ? (
-              <Reveal tone={proof.holds && proof.onChain ? "success" : "danger"} className={`mt-4 rounded-lg border px-4 py-3 ${proof.holds && proof.onChain ? "border-success/30 bg-success/8" : "border-danger/30 bg-danger/8"}`} data-testid="prove-result">
-                <div className={`flex items-center gap-1.5 text-[13px] font-semibold ${proof.holds && proof.onChain ? "text-[#1d7a52]" : "text-[#b4232a]"}`}>
-                  <ShieldCheck size={14} /> {proof.holds ? `Holds >= ${fmtUsd(usdcToMinor(min))}` : "Below the requested floor"}
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-2 text-[12px] text-muted">
-                  <span>{proof.onChain ? "Anyone can verify this independently." : "Proof was not verified on-chain."}</span>
-                  {proof.ref ? <OnChainDetail refData={proof.ref} /> : null}
-                </div>
-              </Reveal>
-            ) : null}
-          </Card>
 
-          <Card className="p-5">
-            <div className="flex items-center gap-2 text-[14px] font-semibold">
-              <ShieldCheck size={16} className="text-primary" /> Disclose exact total
+            <div className="mt-4 grid gap-2" role="radiogroup" aria-label="What to disclose">
+              {DISCLOSURES.map((d) => {
+                const selected = disclose === d.id;
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setDisclose(d.id)}
+                    disabled={busyProve}
+                    data-testid={`disclose-${d.id}`}
+                    className={`rounded-xl border px-3.5 py-3 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60 ${
+                      selected ? "border-primary/50 bg-primary/[0.06]" : "border-border hover:border-primary/30 hover:bg-border/20"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-[13.5px] font-semibold ${selected ? "text-primary" : "text-fg"}`}>{d.title}</span>
+                      <span className={`flex h-4 w-4 flex-none items-center justify-center rounded-full border ${selected ? "border-primary" : "border-border"}`}>
+                        {selected ? <span className="h-2 w-2 rounded-full bg-primary" /> : null}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[12px] leading-relaxed text-muted">{d.blurb}</div>
+                  </button>
+                );
+              })}
             </div>
-            <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
-              For an auditor who needs the precise figure: a zero-knowledge proof that your shielded notes sum to an exact total, verifiable on-chain. Individual amounts stay hidden.
-            </p>
-            {busyTotal ? (
-              <Proving className="mt-4" steps={["Summing notes in zero-knowledge", "Verifying the sum proof on-chain"]} />
-            ) : (
-              <Button variant="outline" className="mt-4 w-full" onClick={proveExactTotal} data-testid="prove-total">Prove exact total</Button>
-            )}
-            {totalProof ? (
-              <Reveal tone={totalProof.onChain ? "success" : "danger"} className={`mt-4 rounded-lg border px-4 py-3 ${totalProof.onChain ? "border-success/30 bg-success/8" : "border-danger/30 bg-danger/8"}`} data-testid="prove-total-result">
-                <div className={`flex items-center gap-1.5 text-[13px] font-semibold ${totalProof.onChain ? "text-[#1d7a52]" : "text-[#b4232a]"}`}>
-                  <ShieldCheck size={14} /> Total: {fmtUsd(totalProof.total)}
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-2 text-[12px] text-muted">
-                  <span>{totalProof.onChain ? "Proven, not asserted." : "Proof was not verified on-chain."}</span>
-                  {totalProof.ref ? <OnChainDetail refData={totalProof.ref} /> : null}
-                </div>
-              </Reveal>
-            ) : null}
-          </Card>
 
-          <Card className="p-5">
-            <div className="flex items-center gap-2 text-[14px] font-semibold">
-              <ShieldCheck size={16} className="text-primary" /> Prove solvency
-            </div>
-            <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
-              One click proves your treasury covers everything you owe - pending payroll plus open invoices - verifiable on-chain. Neither your balance nor what you owe is revealed.
-            </p>
-            {busySolv ? (
-              <Proving className="mt-4" steps={["Summing liabilities privately", "Proving assets ≥ liabilities", "Verifying on-chain"]} />
-            ) : (
-              <Button variant="outline" className="mt-4 w-full" onClick={proveSolvent} data-testid="prove-solvency">Prove assets ≥ liabilities</Button>
-            )}
-            {solvProof ? (
-              <Reveal tone={solvProof.solvent && solvProof.onChain ? "success" : "danger"} className={`mt-4 rounded-lg border px-4 py-3 ${solvProof.solvent && solvProof.onChain ? "border-success/30 bg-success/8" : "border-danger/30 bg-danger/8"}`} data-testid="prove-solvency-result">
-                <div className={`flex items-center gap-1.5 text-[13px] font-semibold ${solvProof.solvent && solvProof.onChain ? "text-[#1d7a52]" : "text-[#b4232a]"}`}>
-                  <ShieldCheck size={14} /> {solvProof.solvent ? "Solvent - assets cover all liabilities" : "Not solvent - liabilities exceed treasury"}
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-2 text-[12px] text-muted">
-                  <span>{solvProof.onChain ? "The network verified it." : "Proof was not verified on-chain."}</span>
-                  {solvProof.ref ? <OnChainDetail refData={solvProof.ref} /> : null}
-                </div>
-              </Reveal>
+            {disclose === "reserves" ? (
+              <div className="mt-3">
+                <Input label="Prove we hold at least (USDC)" inputMode="decimal" value={min} onChange={(e) => setMin(e.target.value.replace(/[^0-9.]/g, ""))} data-testid="prove-min" />
+              </div>
             ) : null}
+
+            <Button
+              className="mt-4 w-full"
+              onClick={runProof}
+              disabled={busyProve || (disclose === "reserves" && !(Number(min) > 0))}
+              data-testid="prove-auditor"
+            >
+              <ShieldCheck size={15} /> Prove to auditor
+            </Button>
+            <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
+              Every proof is verified by the on-chain verifier - nothing here is asserted on trust.
+            </p>
           </Card>
         </div>
       </div>
@@ -555,5 +581,60 @@ export function Treasury() {
         </div>
       </Modal>
     </Screen>
+  );
+}
+
+/** One key/value line inside the shared ceremony's details slot (dark surface). */
+function CeremonyRow({ k, v }: { k: string; v: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="flex-none text-white/48">{k}</span>
+      <span className="min-w-0 truncate text-right font-semibold text-white">{v}</span>
+    </div>
+  );
+}
+
+/** Make-private on-chain receipt shown when the shield ceremony settles. */
+function FundReceipt({ txHash }: { txHash?: string }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2 font-semibold text-white">
+        <ShieldCheck size={15} /> Moved to Private on-chain
+      </div>
+      <div className="text-white/60">It's now a dual-controlled M-of-N org note - only you can see it.</div>
+      {txHash ? (
+        <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] font-semibold text-white hover:underline">
+          View on {NETWORK_LABEL} explorer <ArrowUpRight size={12} />
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+/** Auditor receipt: the verdict + the Merkle root flipping into view + drill-down. */
+function ProveReceipt({ result, reduce }: { result: ProveResult; reduce: boolean }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 font-semibold text-white">
+        <ShieldCheck size={15} /> {result.headline}
+      </div>
+      {result.ref?.root ? (
+        <motion.div
+          className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2"
+          style={{ transformPerspective: 640 }}
+          initial={reduce ? false : { rotateX: 90, opacity: 0 }}
+          animate={{ rotateX: 0, opacity: 1 }}
+          transition={{ duration: 0.5, ease: EASE }}
+          data-testid="prove-merkle-root"
+        >
+          <div className="text-[11px] uppercase tracking-wide text-white/45">Merkle root</div>
+          <div className="break-all font-mono text-[12px] text-white/80">{result.ref.root}</div>
+        </motion.div>
+      ) : null}
+      <div className="flex items-center justify-between gap-2 text-white/60">
+        <span>{result.onChain ? "Verified on-chain. Anyone can re-check it." : "Proof was not verified on-chain."}</span>
+        {result.ref ? <OnChainDetail refData={result.ref} /> : null}
+      </div>
+    </div>
   );
 }
