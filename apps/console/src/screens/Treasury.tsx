@@ -20,7 +20,7 @@ import { api, type OnChainRef } from "../lib/api";
 import { useConsole } from "../lib/store";
 import { explorerTxUrl, fmtUsd, formatAddress, friendlyError, usdcToMinor } from "../lib/format";
 import { NETWORK_LABEL } from "../lib/network";
-import { Page, Proving, Reveal, Stagger } from "../ui/motion";
+import { Screen, Proving, Reveal, Stagger } from "../ui/motion";
 import { OnChainDetail } from "../ui/onchain";
 import { QrCode } from "../ui/qr";
 import { AddressDisplay, Button, Card, CopyButton, Input, Modal, Pill, Skeleton, useToast } from "../ui/primitives";
@@ -182,7 +182,7 @@ export function Treasury() {
   const publicUsd = pub ? fmtUsd(pub.units) : "$0.00";
 
   return (
-    <Page>
+    <Screen>
       <div className="mb-5">
         <h1 className="font-display text-2xl">Treasury</h1>
         <p className="mt-1 text-[13.5px] text-muted">Two balances · Private stays hidden and provable · Public sends to and receives from any wallet</p>
@@ -554,6 +554,6 @@ export function Treasury() {
           )}
         </div>
       </Modal>
-    </Page>
+    </Screen>
   );
 }

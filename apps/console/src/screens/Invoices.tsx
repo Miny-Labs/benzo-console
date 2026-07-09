@@ -11,7 +11,7 @@ import { api, type ApprovalProgressView, type OnChainRef } from "../lib/api";
 import { useConsole } from "../lib/store";
 import { USDC_SCALE, fmtUsd, formatDate, friendlyError } from "../lib/format";
 import { statusMeta } from "../lib/status";
-import { Page, Proving, Reveal, Stagger } from "../ui/motion";
+import { Screen, Proving, Reveal, Stagger } from "../ui/motion";
 import { OnChainDetail } from "../ui/onchain";
 import { Button, Card, EmptyState, Input, Skeleton, StatusPill, useToast } from "../ui/primitives";
 
@@ -170,7 +170,7 @@ export function Invoices() {
   }
 
   return (
-    <Page>
+    <Screen>
       <div className="mb-5 flex items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl">Invoices to pay</h1>
@@ -338,6 +338,6 @@ export function Invoices() {
           </Card>
         </div>
       ) : null}
-    </Page>
+    </Screen>
   );
 }

@@ -9,8 +9,8 @@ import {
   type ReactNode, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes,
 } from "react";
 import { Check, ChevronDown, Copy, Loader2, X, ShieldCheck } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
 import { copyTextToClipboard } from "../lib/clipboard";
+import { AnimatePresence, motion, spring } from "./motion";
 
 // ---------------------------------------------------------------- form fields
 
@@ -176,7 +176,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               initial={{ opacity: 0, x: 24, scale: 0.96 }}
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, x: 24, scale: 0.96 }}
-              transition={{ type: "spring", stiffness: 380, damping: 30 }}
+              transition={spring}
               className={`min-w-[220px] rounded-lg border bg-surface px-4 py-2.5 text-sm shadow-lg ${toneCls[t.tone ?? "muted"]}`}
             >
               {t.title}

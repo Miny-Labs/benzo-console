@@ -316,6 +316,9 @@ export interface SiweVerifyResponse {
 
 interface PublicBalanceResponse {
   units?: string;
+  // Legacy Stellar-era field. Kept ONLY as a defensive read fallback so a
+  // balance never silently renders as $0 if a backend build still emits it;
+  // not part of the going-forward contract.
   stroops?: string;
   address: string;
   asset: string;
@@ -365,7 +368,7 @@ export const api = {
     http<{
       live: boolean; org?: string; period?: string; total?: string; onChain?: boolean;
       vkId?: string; verifier?: string; network?: string; root?: string;
-      proof?: unknown; publicInputs?: string[]; sorobanProof?: unknown; sorobanPublics?: string[]; issuedAt?: string;
+      proof?: unknown; publicInputs?: string[]; issuedAt?: string;
     }>("/records/period-total", { method: "POST", body: JSON.stringify({ period }) }),
   // "Make private" (shield public -> pool). amount in USDC (human).
   fundTreasury: (amount: string) =>
