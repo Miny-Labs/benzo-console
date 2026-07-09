@@ -8,7 +8,7 @@ import type { Integration } from "@benzo/types";
 import { api, type RecoveryStatus } from "../lib/api";
 import { useConsole } from "../lib/store";
 import { ROLES, roleHas, PERMISSION_GROUPS, ROLE_BLURB } from "../lib/permissions";
-import { Page, Stagger } from "../ui/motion";
+import { Screen, Stagger } from "../ui/motion";
 import { Card, Pill, Skeleton, StatusPill } from "../ui/primitives";
 
 export function SettingsScreen() {
@@ -21,7 +21,7 @@ export function SettingsScreen() {
   }, []);
 
   return (
-    <Page>
+    <Screen>
       <div className="mb-5">
         <h1 className="font-display text-2xl">Settings & team</h1>
         <p className="mt-1 text-[13.5px] text-muted">{session?.org.legalName ?? session?.org.name} · {session?.org.country ?? "Country not set"} · KYB {session?.org.kybStatus}</p>
@@ -196,6 +196,6 @@ export function SettingsScreen() {
           </Card>
         </Stagger.Item>
       </Stagger>
-    </Page>
+    </Screen>
   );
 }

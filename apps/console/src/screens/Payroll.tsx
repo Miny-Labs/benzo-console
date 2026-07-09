@@ -10,7 +10,7 @@ import type { PayrollBatch } from "@benzo/types";
 import { api, type OnChainRef } from "../lib/api";
 import { useConsole, useCounterpartyName } from "../lib/store";
 import { explorerTxUrl, fmtUsd, friendlyError } from "../lib/format";
-import { Page, Proving, Stagger } from "../ui/motion";
+import { Screen, Proving, Stagger } from "../ui/motion";
 import { OnChainDetail } from "../ui/onchain";
 import { Button, Card, EmptyState, Input, Modal, Pill, Skeleton, StatusPill, useToast } from "../ui/primitives";
 
@@ -185,7 +185,7 @@ export function Payroll() {
   }
 
   return (
-    <Page>
+    <Screen>
       <div className="mb-5">
         <h1 className="font-display text-2xl">Payroll</h1>
         <p className="mt-1 text-[13.5px] text-muted">Salaries private on-chain · total provable to an auditor</p>
@@ -406,6 +406,6 @@ export function Payroll() {
           </div>
         ) : null}
       </Modal>
-    </Page>
+    </Screen>
   );
 }

@@ -10,7 +10,7 @@ import { Copy, Check, Send, Upload, X } from "lucide-react";
 import { api, type OrgInvite } from "../lib/api";
 import { copyTextToClipboard } from "../lib/clipboard";
 import { friendlyError } from "../lib/format";
-import { Page, EASE } from "../ui/motion";
+import { Screen, EASE } from "../ui/motion";
 import { PageHeader, Card, Button, Modal, Pill, EmptyState, Skeleton } from "../ui/primitives";
 import { Field, Input, Select, Textarea, useToast } from "../ui/controls";
 
@@ -117,7 +117,7 @@ export function Invites() {
   }
 
   return (
-    <Page>
+    <Screen>
       <PageHeader title="Invites" subtitle="Onboard your team, contractors, and customers with a secure link" />
 
       <div className="mb-5 flex gap-1.5">
@@ -241,7 +241,7 @@ export function Invites() {
           The link for <b>{confirmRevoke?.name ?? confirmRevoke?.email ?? "this invite"}</b> will stop working immediately. Anyone who hasn't accepted it yet won't be able to onboard. You can always create a new link.
         </p>
       </Modal>
-    </Page>
+    </Screen>
   );
 }
 

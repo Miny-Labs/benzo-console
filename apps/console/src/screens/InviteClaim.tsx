@@ -8,7 +8,7 @@ import { ArrowRight, Check, UserPlus, X } from "lucide-react";
 import { assertAppScope, parseBenzoLink, WrongAppError, type OrgInviteLink } from "@benzo/links";
 import { api } from "../lib/api";
 import { friendlyError } from "../lib/format";
-import { Page } from "../ui/motion";
+import { Screen } from "../ui/motion";
 import { Button, Card, Pill } from "../ui/primitives";
 
 type Parsed =
@@ -55,14 +55,14 @@ export function InviteClaim() {
 
   if (!parsed.ok) {
     return (
-      <Page className="mx-auto flex min-h-[70vh] max-w-lg items-center justify-center">
+      <Screen className="mx-auto flex min-h-[70vh] max-w-lg items-center justify-center">
         <Card className="w-full p-8 text-center" data-testid="console-invite-error">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-danger/10 text-danger"><X size={26} /></div>
           <h1 className="mt-4 font-display text-2xl">{parsed.title}</h1>
           <p className="mt-2 text-sm text-muted">{parsed.hint}</p>
           <Button className="mt-5" variant="outline" onClick={() => nav("/")}>Back to console</Button>
         </Card>
-      </Page>
+      </Screen>
     );
   }
 
@@ -85,7 +85,7 @@ export function InviteClaim() {
   }
 
   return (
-    <Page className="mx-auto flex min-h-[70vh] max-w-lg items-center justify-center">
+    <Screen className="mx-auto flex min-h-[70vh] max-w-lg items-center justify-center">
       <Card className="w-full p-8 text-center" data-testid="console-invite-claim">
         <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full ${done ? "bg-success/10 text-success" : "bg-primary/10 text-primary"}`}>
           {done ? <Check size={30} /> : <UserPlus size={30} />}
@@ -111,6 +111,6 @@ export function InviteClaim() {
           </Button>
         )}
       </Card>
-    </Page>
+    </Screen>
   );
 }

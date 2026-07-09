@@ -11,7 +11,7 @@ import type { Counterparty } from "@benzo/types";
 import { api } from "../lib/api";
 import { useConsole } from "../lib/store";
 import { explorerTxUrl, fmtUsd, friendlyError, minorToUsdc, usdcToMinor } from "../lib/format";
-import { EASE, Page, Stagger, motion } from "../ui/motion";
+import { EASE, Screen, Stagger, motion } from "../ui/motion";
 import { Button, Card, EmptyState, Input, Modal, Pill, Skeleton, StatusPill, useToast } from "../ui/primitives";
 
 type PayEvent = { period: string; amount: string; status: string; txHash?: string; batchId: string };
@@ -152,7 +152,7 @@ export function Contractors() {
   }
 
   return (
-    <Page>
+    <Screen>
       <div className="mb-5 flex items-start justify-between">
         <div>
           <h1 className="font-display text-2xl">Contractors</h1>
@@ -393,6 +393,6 @@ export function Contractors() {
           ) : null}
         </div>
       </Modal>
-    </Page>
+    </Screen>
   );
 }

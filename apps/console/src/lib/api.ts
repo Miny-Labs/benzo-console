@@ -316,7 +316,6 @@ export interface SiweVerifyResponse {
 
 interface PublicBalanceResponse {
   units?: string;
-  stroops?: string;
   address: string;
   asset: string;
   issuer: string;
@@ -324,7 +323,7 @@ interface PublicBalanceResponse {
 }
 
 function normalizePublicBalance(r: PublicBalanceResponse): { units: string; address: string; asset: string; issuer: string; live: boolean } {
-  return { units: r.units ?? r.stroops ?? "0", address: r.address, asset: r.asset, issuer: r.issuer, live: r.live };
+  return { units: r.units ?? "0", address: r.address, asset: r.asset, issuer: r.issuer, live: r.live };
 }
 
 export const api = {
@@ -365,7 +364,7 @@ export const api = {
     http<{
       live: boolean; org?: string; period?: string; total?: string; onChain?: boolean;
       vkId?: string; verifier?: string; network?: string; root?: string;
-      proof?: unknown; publicInputs?: string[]; sorobanProof?: unknown; sorobanPublics?: string[]; issuedAt?: string;
+      proof?: unknown; publicInputs?: string[]; issuedAt?: string;
     }>("/records/period-total", { method: "POST", body: JSON.stringify({ period }) }),
   // "Make private" (shield public -> pool). amount in USDC (human).
   fundTreasury: (amount: string) =>

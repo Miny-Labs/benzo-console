@@ -11,7 +11,7 @@ import { motion } from "framer-motion";
 import { api } from "../lib/api";
 import { useConsole } from "../lib/store";
 import { fmtUsd, formatAddress, usdcToMinor } from "../lib/format";
-import { Page } from "../ui/motion";
+import { Screen } from "../ui/motion";
 import { Button, Card, Input, PrivacyDisclosure, Select, useToast } from "../ui/primitives";
 
 export function Pay() {
@@ -69,7 +69,7 @@ export function Pay() {
   }
 
   return (
-    <Page>
+    <Screen>
       <div className="mb-5">
         <h1 className="font-display text-2xl">Send & vendor pay</h1>
         <p className="mt-1 text-[13.5px] text-muted">Pay a vendor or contractor privately. The amount and who you paid stay confidential.</p>
@@ -177,7 +177,7 @@ export function Pay() {
           </Card>
         </div>
       </div>
-    </Page>
+    </Screen>
   );
 }
 

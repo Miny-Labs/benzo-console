@@ -10,7 +10,7 @@ import { CheckCircle2, Download, ExternalLink, FileKey2, ScrollText, ShieldAlert
 import type { LedgerEntry, LedgerSourceType } from "@benzo/types";
 import { api, type PrivateAuditAnchorResponse, type PrivateAuditPacketResponse } from "../lib/api";
 import { explorerTxUrl, fmtUsd, formatAddress, formatDate, friendlyError } from "../lib/format";
-import { Page, Proving, Reveal, Stagger } from "../ui/motion";
+import { Screen, Proving, Reveal, Stagger } from "../ui/motion";
 import { Button, Card, EmptyState, Pill, Skeleton, useToast } from "../ui/primitives";
 
 const sourceTone: Record<LedgerSourceType, "shielded" | "success" | "warning" | "danger" | "muted"> = {
@@ -125,7 +125,7 @@ export function AuditLog() {
   }
 
   return (
-    <Page>
+    <Screen>
       <div className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl">Audit log</h1>
@@ -299,6 +299,6 @@ export function AuditLog() {
           ))}
         </Stagger>
       )}
-    </Page>
+    </Screen>
   );
 }

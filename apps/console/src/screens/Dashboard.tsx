@@ -10,7 +10,7 @@ import { useReducedMotion } from "framer-motion";
 import { useConsole } from "../lib/store";
 import { USDC_SCALE, fmtUsd, formatDate } from "../lib/format";
 import { NETWORK_LABEL } from "../lib/network";
-import { Page, Stagger } from "../ui/motion";
+import { Screen, Stagger } from "../ui/motion";
 import { Button, Card, Pill, ShieldedBadge, StatusPill, Skeleton } from "../ui/primitives";
 
 /** Count a dollar figure up to its target on load (ease-out-cubic; skipped under reduced-motion). */
@@ -123,7 +123,7 @@ export function Dashboard() {
   const animatedTotal = useCountUp(targetDollars);
 
   return (
-    <Page>
+    <Screen>
       <div className="mb-5">
         <h1 className="font-display text-2xl">Overview</h1>
         <p className="mt-1 text-[13.5px] text-muted">Everything settles on {NETWORK_LABEL} through eERC · amounts are private by default</p>
@@ -240,6 +240,6 @@ export function Dashboard() {
           </Card>
         </Stagger.Item>
       </Stagger>
-    </Page>
+    </Screen>
   );
 }

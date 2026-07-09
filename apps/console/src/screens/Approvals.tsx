@@ -12,7 +12,7 @@ import { useConsole, useCounterpartyName } from "../lib/store";
 import { fmtUsd, explorerTxUrl, friendlyError } from "../lib/format";
 import { NETWORK_LABEL } from "../lib/network";
 import { motion, AnimatePresence } from "framer-motion";
-import { Page, EASE } from "../ui/motion";
+import { Screen, EASE } from "../ui/motion";
 import { Button, Card, EmptyState, Pill, PrivacyDisclosure, Skeleton, StatusPill, useToast } from "../ui/primitives";
 
 export function Approvals() {
@@ -49,7 +49,7 @@ export function Approvals() {
   }
 
   return (
-    <Page>
+    <Screen>
       <div className="mb-5">
         <h1 className="font-display text-2xl">Approvals</h1>
         <p className="mt-1 text-[13.5px] text-muted">Release gated payments. Each one settles a real shielded transfer on {NETWORK_LABEL}.</p>
@@ -157,6 +157,6 @@ export function Approvals() {
           </Card>
         </>
       ) : null}
-    </Page>
+    </Screen>
   );
 }

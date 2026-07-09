@@ -13,14 +13,14 @@ import { api } from "../lib/api";
 import { useConsole } from "../lib/store";
 import { friendlyError, minorToUsdc, usdcToMinor } from "../lib/format";
 import { policySummary, conditionLabel, totalApprovers } from "../lib/policy";
-import { Page, Stagger, motion, AnimatePresence, EASE } from "../ui/motion";
+import { Screen, Stagger, motion, AnimatePresence, EASE } from "../ui/motion";
 import { Button, Card, Input, Pill, useToast } from "../ui/primitives";
 
 export function Policies() {
   const { policies, members, refresh, loading } = useConsole();
 
   return (
-    <Page>
+    <Screen>
       <div className="mb-5">
         <h1 className="font-display text-2xl">Approval policies</h1>
         <p className="mt-1 text-[13.5px] text-muted">Who must approve, and who signs to release. The release gate is enforced on-chain by the dual-control circuit.</p>
@@ -37,7 +37,7 @@ export function Policies() {
           ))}
         </Stagger>
       )}
-    </Page>
+    </Screen>
   );
 }
 

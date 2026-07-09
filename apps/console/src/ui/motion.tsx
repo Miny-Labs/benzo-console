@@ -4,6 +4,7 @@ import { ShieldCheck } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 export const EASE = [0.22, 1, 0.36, 1] as const;
+export const spring = { type: "spring", stiffness: 380, damping: 30 } as const;
 
 export const fadeUp: Variants = {
   hidden: { opacity: 0, y: 16 },
@@ -11,7 +12,7 @@ export const fadeUp: Variants = {
 };
 export const stagger: Variants = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 
-export function Page({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function Screen({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.28, ease: EASE }} className={className}>
       {children}

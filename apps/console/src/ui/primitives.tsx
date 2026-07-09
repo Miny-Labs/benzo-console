@@ -1,6 +1,6 @@
 import { EyeOff, Loader2 } from "lucide-react";
 import type { HTMLAttributes, ReactNode } from "react";
-import { motion } from "framer-motion";
+import { motion, spring } from "./motion";
 
 export * from "./controls";
 
@@ -117,7 +117,7 @@ export function Button({
       title={title}
       // calm, console-grade tactile feedback (reduced-motion: framer no-ops it)
       whileTap={disabled || loading ? undefined : { scale: 0.98 }}
-      transition={{ type: "spring", stiffness: 380, damping: 30, mass: 0.7 }}
+      transition={{ ...spring, mass: 0.7 }}
       {...rest}
       className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-[background-color,opacity,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 ${variants[variant]} ${sizes[size]} ${className}`}
     >

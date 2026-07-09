@@ -10,7 +10,7 @@ import { api, type OnChainRef } from "../lib/api";
 import { validateViewingGrantForm } from "../lib/grants";
 import { useConsole } from "../lib/store";
 import { fmtUsd, formatDate, friendlyError } from "../lib/format";
-import { Page, Proving, Reveal, Stagger } from "../ui/motion";
+import { Screen, Proving, Reveal, Stagger } from "../ui/motion";
 import { OnChainDetail } from "../ui/onchain";
 import { Button, Card, EmptyState, Input, Modal, Pill, Select, Skeleton, StatusPill, useToast } from "../ui/primitives";
 
@@ -64,7 +64,7 @@ export function Grants() {
       setAtt(r);
       if (!r.live) toast({ title: "Not connected. Connect to generate a real attestation.", tone: "muted" });
       else {
-        const publicInputs = r.publicInputs ?? r.sorobanPublics ?? [];
+        const publicInputs = r.publicInputs ?? [];
         const emptyPeriod = !r.onChain && publicInputs.length === 0 && Number(r.total ?? "0") === 0;
         toast({
           title: r.onChain ? "Total proven on-chain" : emptyPeriod ? "No period notes to attest yet" : "Attestation was not verified on-chain",
@@ -145,10 +145,10 @@ export function Grants() {
           verifier: att.verifier,
           network: att.network,
           root: att.root,
-          publics: (att.publicInputs ?? att.sorobanPublics ?? []).map((v, i) => ({ k: i === 0 ? "Total (committed)" : `public[${i}]`, v })),
+          publics: (att.publicInputs ?? []).map((v, i) => ({ k: i === 0 ? "Total (committed)" : `public[${i}]`, v })),
         }
       : undefined;
-  const attHasProofInputs = !!(att?.publicInputs ?? att?.sorobanPublics)?.length;
+  const attHasProofInputs = !!att?.publicInputs?.length;
   const attIsEmptyPeriod = !!att && !att.onChain && !attHasProofInputs && Number(att.total ?? "0") === 0;
   const attTone = att?.onChain ? "success" : attIsEmptyPeriod ? "neutral" : "danger";
   const attClass = att?.onChain
@@ -159,7 +159,7 @@ export function Grants() {
   const attTextClass = att?.onChain ? "text-[#1d7a52]" : attIsEmptyPeriod ? "text-fg" : "text-[#b4232a]";
 
   return (
-    <Page>
+    <Screen>
       <div className="mb-5 flex items-start justify-between">
         <div>
           <h1 className="font-display text-2xl">Auditor grants</h1>
@@ -339,6 +339,6 @@ export function Grants() {
           This revokes <b>{confirmRevoke?.auditorName}</b>'s read-only access on-chain, immediately. They'll lose visibility into the granted scope and you can't undo it - you'd have to issue a new grant.
         </p>
       </Modal>
-    </Page>
+    </Screen>
   );
 }
