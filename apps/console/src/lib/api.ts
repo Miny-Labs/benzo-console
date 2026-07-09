@@ -316,6 +316,10 @@ export interface SiweVerifyResponse {
 
 interface PublicBalanceResponse {
   units?: string;
+  // Legacy Stellar-era field. Kept ONLY as a defensive read fallback so a
+  // balance never silently renders as $0 if a backend build still emits it;
+  // not part of the going-forward contract.
+  stroops?: string;
   address: string;
   asset: string;
   issuer: string;
@@ -323,7 +327,7 @@ interface PublicBalanceResponse {
 }
 
 function normalizePublicBalance(r: PublicBalanceResponse): { units: string; address: string; asset: string; issuer: string; live: boolean } {
-  return { units: r.units ?? "0", address: r.address, asset: r.asset, issuer: r.issuer, live: r.live };
+  return { units: r.units ?? r.stroops ?? "0", address: r.address, asset: r.asset, issuer: r.issuer, live: r.live };
 }
 
 export const api = {
