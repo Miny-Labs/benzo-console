@@ -25,7 +25,7 @@ import { Button, Card, EmptyState, Input, Modal, Pill, Skeleton, StatusPill, use
 /** On-chain refs captured from the automated pass, per proof, for the receipt drill-down. */
 type RunRefs = { funded?: OnChainRef; approval?: OnChainRef; computation?: OnChainRef };
 /** What actually settled, surfaced in the ceremony receipt. */
-type RunOutcome = { total: number; paid: number; failed: number; onChain: boolean; txHash?: string };
+type RunOutcome = { total: number; paid: number; failed: number; onChain: boolean; txHash?: string; unverifiedPolicy?: number };
 
 const period = () => new Date().toISOString().slice(0, 7); // e.g. 2026-06
 
@@ -70,13 +70,30 @@ export function Payroll() {
     try {
       // Fold the four manual proofs into the pass. funded/policy/computation are
       // independent on-chain pre-flight proofs - prove them together.
-      const [funded, , computation] = await Promise.all([
+      const [funded, policy, computation] = await Promise.all([
         api.proveFunded(b.id),
         api.provePolicy(b.id, cap),
         api.proveComputation(b.id),
       ]);
       if (funded.ref) captured.funded = funded.ref;
       if (computation.ref) captured.computation = computation.ref;
+
+      // In-ZK spending policy (Z3 cap + Z4 sanctions), proven per line. A provable
+      // hard block - over the cap or sanctioned - stops the run BEFORE it settles
+      // rather than quietly paying it; proofs that didn't reach the chain are
+      // carried into the receipt as a note. Amounts/recipients stay hidden.
+      const policyLines = policy.lines ?? [];
+      const over = policyLines.filter((l) => l.capProof?.onChain && !l.capProof.withinCap).length;
+      const flagged = policyLines.filter((l) => l.screenProof?.onChain && !l.screenProof.innocent).length;
+      const unverifiedPolicy = policyLines.filter((l) => (l.capProof && !l.capProof.onChain) || (l.screenProof && !l.screenProof.onChain)).length;
+      if (over || flagged) {
+        const summary = [over ? `${over} over the ${cap} cap` : "", flagged ? `${flagged} sanctioned` : ""].filter(Boolean).join(", ");
+        setRefs((m) => ({ ...m, [b.id]: { ...m[b.id], ...captured } }));
+        toast({ title: `Policy blocked this run: ${summary}`, tone: "danger" });
+        dispatchPayment({ type: "FAIL", error: `Policy blocked this run: ${summary}. No payouts settled - fix the flagged lines and retry.` });
+        await refresh();
+        return;
+      }
 
       // The click is this operator's approval (proposer != approver, enforced
       // server-side). It settles only when every step + the release gate pass.
@@ -98,6 +115,9 @@ export function Payroll() {
       if (approval.ref) captured.approval = approval.ref;
       setRefs((m) => ({ ...m, [b.id]: { ...m[b.id], ...captured } }));
 
+      // Point the ceremony at the SETTLED batch, not the pending draft we opened
+      // with, so the per-recipient roster reflects real paid/failed states.
+      setCeremonyBatch(approved);
       dispatchPayment({ type: "PROOF_READY" }); // submitting N transfers
       const settledTx = approved.lines.find((l) => l.txHash)?.txHash ?? "";
       dispatchPayment({ type: "SUBMITTED", txHash: settledTx });
@@ -105,7 +125,7 @@ export function Payroll() {
       const failed = approved.lines.filter((l) => l.status === "failed").length;
       const paid = approved.lines.filter((l) => l.status === "paid").length;
       const onChain = approved.lines.some((l) => l.onChain);
-      setRunOutcome({ total: approved.lines.length, paid, failed, onChain, txHash: settledTx || undefined });
+      setRunOutcome({ total: approved.lines.length, paid, failed, onChain, txHash: settledTx || undefined, unverifiedPolicy });
 
       if (failed || !onChain) {
         dispatchPayment({
@@ -205,6 +225,11 @@ export function Payroll() {
                   ? "Each salary settled privately on-chain. The total stays provable to an auditor; the individual amounts don't leak."
                   : "No on-chain settlement was recorded for this run."}
               </p>
+              {runOutcome.unverifiedPolicy ? (
+                <p className="text-warning" data-testid="policy-unverified-note">
+                  {runOutcome.unverifiedPolicy} policy proof{runOutcome.unverifiedPolicy === 1 ? "" : "s"} didn't verify on-chain - re-check before you rely on this run.
+                </p>
+              ) : null}
               {activeRefs && (activeRefs.funded || activeRefs.approval || activeRefs.computation) ? (
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-white/10 pt-2.5">
                   {activeRefs.funded ? <OnChainDetail refData={activeRefs.funded} label="Funded proof" /> : null}

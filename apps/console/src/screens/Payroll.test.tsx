@@ -126,6 +126,31 @@ describe("Payroll", () => {
     expect(within(ceremony).getByText("Funded proof")).toBeInTheDocument();
     expect(within(ceremony).getByText("Computation proof")).toBeInTheDocument();
     expect(within(ceremony).getByText("Approval proof")).toBeInTheDocument();
+    // Per-recipient progress reads the SETTLED batch, not the pending draft: both
+    // lines settled, so the roster reports 2/2 paid (would be 0/2 if stale).
+    expect(within(ceremony).getByText("2/2 paid")).toBeInTheDocument();
+  });
+
+  it("blocks a policy-violating run before it settles", async () => {
+    store.value = { ...store.value, payrolls: [batch], counterparties: payableCounterparties };
+    // One line proves OVER the cap on-chain - a provable hard block.
+    apiMock.provePolicy.mockResolvedValue({
+      onChain: true,
+      lines: [
+        { counterpartyId: "cp_1", capProof: { withinCap: false, onChain: true } },
+        { counterpartyId: "cp_2", capProof: { withinCap: true, onChain: true } },
+      ],
+    });
+    render(<Payroll />);
+
+    openConfirmAndRun();
+
+    const ceremony = await screen.findByTestId("send-ceremony");
+    await waitFor(() => expect(apiMock.provePolicy).toHaveBeenCalledWith("pr_1", "5000.00"));
+    // The policy result is surfaced (not silently dropped) AND settlement is stopped.
+    await waitFor(() => expect(within(ceremony).getAllByText(/Policy blocked/i).length).toBeGreaterThan(0));
+    expect(apiMock.approvePayroll).not.toHaveBeenCalled();
+    expect(apiMock.proveApproval).not.toHaveBeenCalled();
   });
 
   it("records a non-final approval without claiming a settlement", async () => {
