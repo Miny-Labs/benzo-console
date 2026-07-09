@@ -14,6 +14,7 @@
   "dependencies": {
     "@benzo/config": "workspace:*",
     "@benzo/links": "workspace:*",
+    "@benzo/ui": "workspace:*",
     "@benzo/types": "workspace:*",
     "@tanstack/react-query": "^5.62.0",
     "buffer": "^6.0.3",

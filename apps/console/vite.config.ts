@@ -18,6 +18,8 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@benzo/config": r("../../packages/config/src/index.ts"),
         "@benzo/links": r("../../packages/links/src/index.ts"),
+        "@benzo/ui/payment-state": r("../../packages/ui/src/payment-state.ts"),
+        "@benzo/ui/send-sequence": r("../../packages/ui/src/send-sequence.ts"),
         "@benzo/types": r("../../packages/types/src/index.ts"),
         buffer: "buffer/",
       },

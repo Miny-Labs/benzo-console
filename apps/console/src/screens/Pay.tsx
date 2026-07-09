@@ -4,15 +4,18 @@
  * approval; the rest send right away. The payee's payout handle is resolved
  * server-side, so you never re-type it.
  */
-import { useState } from "react";
+import { useReducer, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, ArrowUpRight, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
+import type { PaymentOrder } from "@benzo/types";
+import { initialPaymentState, isInFlight, paymentReducer, type PaymentEvent } from "@benzo/ui/payment-state";
 import { api } from "../lib/api";
 import { useConsole } from "../lib/store";
 import { fmtUsd, formatAddress, usdcToMinor } from "../lib/format";
 import { Screen } from "../ui/motion";
 import { Button, Card, Input, PrivacyDisclosure, Select, useToast } from "../ui/primitives";
+import { SendCeremony } from "../ui/SendCeremony";
 
 export function Pay() {
   const nav = useNavigate();
@@ -24,15 +27,17 @@ export function Pay() {
   const [toCounterpartyId, setTo] = useState("");
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [paymentState, dispatchPayment] = useReducer(paymentReducer, initialPaymentState);
   const [result, setResult] = useState<{ status: string; onChain?: boolean; unpayable?: boolean } | null>(null);
 
   const fromName = accounts.find((a) => a.id === fromAccountId)?.name ?? "";
   const payee = counterparties.find((c) => c.id === toCounterpartyId);
   const valid = !!fromAccountId && !!toCounterpartyId && Number(amount) > 0;
+  const busy = isInFlight(paymentState);
+  const ceremonyOpen = paymentState.phase !== "idle";
 
   async function submit() {
-    setBusy(true);
+    dispatchPayment({ type: "START" });
     setResult(null);
     try {
       const po = await api.createPayment({
@@ -45,6 +50,7 @@ export function Pay() {
       const settledOnChain = po.settlement?.onChain ?? false;
       const unpayable = !settledOnChain && po.status !== "needs_approval";
       setResult({ status: po.status, onChain: settledOnChain, unpayable });
+      projectPaymentOrder(po, dispatchPayment, unpayable);
       toast({
         title:
           po.status === "needs_approval"
@@ -61,15 +67,53 @@ export function Pay() {
       const m = (e as Error).message;
       // surface the useful operational errors; genericize anything that reads technical
       const friendly = /handle|balance|approv|amount|fund/i.test(m) ? m : "Couldn't send this payment. Please try again.";
+      dispatchPayment({ type: "FAIL", error: friendly });
       toast({ title: friendly, tone: "danger" });
       setStep("form");
-    } finally {
-      setBusy(false);
     }
+  }
+
+  function closeCeremony() {
+    dispatchPayment({ type: "RESET" });
   }
 
   return (
     <Screen>
+      <SendCeremony
+        open={ceremonyOpen}
+        state={paymentState}
+        eyebrow="Vendor pay"
+        details={
+          <>
+            <CeremonyRow k="Pay to" v={payee?.name ?? "Selected contractor"} />
+            <CeremonyRow k="Amount" v={amount ? fmtUsd(usdcToMinor(amount)) : "-"} />
+            {memo ? <CeremonyRow k="Note" v={memo} /> : null}
+          </>
+        }
+        receipt={
+          result ? (
+            <span>
+              {result.status === "needs_approval"
+                ? "Sent for approval. Funds move only after the release gate passes."
+                : result.onChain
+                  ? "Private settlement confirmed."
+                  : "No on-chain settlement was recorded."}
+            </span>
+          ) : undefined
+        }
+        primaryAction={
+          paymentState.phase === "confirmed" || paymentState.phase === "failed"
+            ? { label: paymentState.phase === "confirmed" ? "Done" : "Close", onClick: closeCeremony, variant: paymentState.phase === "failed" ? "danger" : "primary" }
+            : undefined
+        }
+        secondaryAction={
+          result?.status === "needs_approval"
+            ? { label: "Approvals", onClick: () => nav("/approvals"), variant: "outline" }
+            : result?.unpayable
+              ? { label: "Invites", onClick: () => nav("/invites"), variant: "outline" }
+              : undefined
+        }
+      />
       <div className="mb-5">
         <h1 className="font-display text-2xl">Send & vendor pay</h1>
         <p className="mt-1 text-[13.5px] text-muted">Pay a vendor or contractor privately. The amount and who you paid stay confidential.</p>
@@ -127,7 +171,7 @@ export function Pay() {
                 <Button variant="outline" className="flex-1" onClick={() => setStep("form")} disabled={busy}>
                   Back
                 </Button>
-                <Button className="flex-1" loading={busy} onClick={submit} data-testid="pay-submit">
+                <Button className="flex-1" disabled={busy} onClick={submit} data-testid="pay-submit">
                   <ArrowUpRight size={16} /> Send {fmtUsd(usdcToMinor(amount))} privately
                 </Button>
               </div>
@@ -188,4 +232,29 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
       <span className="min-w-0 truncate text-right font-semibold text-ink">{v}</span>
     </div>
   );
+}
+
+function CeremonyRow({ k, v }: { k: string; v: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="flex-none text-white/48">{k}</span>
+      <span className="min-w-0 truncate text-right font-semibold text-white">{v}</span>
+    </div>
+  );
+}
+
+function projectPaymentOrder(po: PaymentOrder, dispatch: (event: PaymentEvent) => void, unpayable: boolean) {
+  if (po.status === "needs_approval") {
+    dispatch({ type: "RESET" });
+    return;
+  }
+  if (unpayable || po.status === "failed") {
+    dispatch({ type: "FAIL", error: "Payment did not settle on-chain." });
+    return;
+  }
+
+  dispatch({ type: "WITNESS_READY" });
+  dispatch({ type: "PROOF_READY" });
+  dispatch({ type: "SUBMITTED", txHash: po.settlement?.txHash ?? "" });
+  dispatch({ type: "CONFIRMED", result: po });
 }
