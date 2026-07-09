@@ -11,5 +11,6 @@ export const wagmiConfig = createConfig({
   transports: {
     [BENZO_CHAINS[0].id]: http(),
     [BENZO_CHAINS[1].id]: http(),
+    [BENZO_CHAINS[2].id]: http(),
   },
 });
