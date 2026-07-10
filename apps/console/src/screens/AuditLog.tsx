@@ -33,8 +33,12 @@ const EVENT_LABEL: Record<LedgerSourceType, string> = {
 
 const ALL_EVENTS = Object.keys(EVENT_LABEL) as LedgerSourceType[];
 
-type Finality = "confirmed" | "pending" | "failed" | "reversed";
-const FINALITY_LABEL: Record<Finality, string> = { confirmed: "Confirmed", pending: "Pending", failed: "Failed", reversed: "Reversed" };
+// `finalityOf` only ever yields confirmed / pending / reversed for a ledger entry
+// (there's no failure signal on the model), so "failed" was unreachable everywhere
+// it appeared — the pill branch and the status-filter option both included a state
+// no row could ever have. Dropped it until the ledger actually surfaces failures.
+type Finality = "confirmed" | "pending" | "reversed";
+const FINALITY_LABEL: Record<Finality, string> = { confirmed: "Confirmed", pending: "Pending", reversed: "Reversed" };
 
 // Prove-flavored copy for the shared send ceremony. The packet is only "verified"
 // once its Merkle root is anchored on-chain; anything short of that fails clearly.
@@ -71,7 +75,6 @@ function finalityOf(e: LedgerEntry): Finality {
 function FinalityPill({ f }: { f: Finality }) {
   if (f === "confirmed") return <Pill tone="success">Confirmed</Pill>;
   if (f === "pending") return <Pill tone="warning">Pending</Pill>;
-  if (f === "failed") return <Pill tone="danger">Failed</Pill>;
   return <MetaPill>Reversed</MetaPill>;
 }
 
@@ -127,7 +130,9 @@ export function AuditLog() {
       if (eventType !== "all" && e.sourceType !== eventType) return false;
       if (statusFilter !== "all" && finalityOf(e) !== statusFilter) return false;
       if (accountFilter !== "all" && !e.lines.some((l) => l.accountId === accountFilter)) return false;
-      if (dateFrom && new Date(e.postedAt) < new Date(dateFrom)) return false;
+      // Both bounds parsed as LOCAL start/end-of-day — bare `new Date("2026-07-10")`
+      // is UTC midnight, which would slice the day off by the viewer's tz offset.
+      if (dateFrom && new Date(e.postedAt) < new Date(`${dateFrom}T00:00:00`)) return false;
       if (dateTo && new Date(e.postedAt) > new Date(`${dateTo}T23:59:59`)) return false;
       if (q) {
         const hay = [e.hash, e.txId, e.sourceId, e.id].filter(Boolean).join(" ").toLowerCase();
@@ -141,6 +146,13 @@ export function AuditLog() {
   const pageClamped = Math.min(page, totalPages - 1);
   const pageRows = filtered.slice(pageClamped * PAGE_SIZE, pageClamped * PAGE_SIZE + PAGE_SIZE);
   useEffect(() => setPage(0), [search, eventType, statusFilter, accountFilter, dateFrom, dateTo]);
+  // Escape closes the detail drawer — the dialog affordance keyboard users expect.
+  useEffect(() => {
+    if (!detail) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDetail(null);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [detail]);
 
   async function generatePacket() {
     dispatchPacket({ type: "START" });
@@ -299,7 +311,7 @@ export function AuditLog() {
             <Input type="date" aria-label="To date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="audit-to" />
           </div>
           <div className="flex items-center justify-between gap-2 sm:col-span-2 lg:col-span-3">
-            <span className="t-helper">Times shown in IST</span>
+            <span className="t-helper">Times shown in your local timezone</span>
             <Button variant="outline" size="sm" onClick={exportCsv} disabled={filtered.length === 0} data-testid="audit-export">
               <Download size={14} /> Export CSV
             </Button>
@@ -346,7 +358,20 @@ export function AuditLog() {
             </thead>
             <tbody>
               {pageRows.map((e) => (
-                <Tr key={e.id} onClick={() => setDetail(e)} data-testid="audit-row">
+                <Tr
+                  key={e.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${EVENT_LABEL[e.sourceType]} — open details`}
+                  onClick={() => setDetail(e)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      setDetail(e);
+                    }
+                  }}
+                  data-testid="audit-row"
+                >
                   <Td className="!py-4 whitespace-nowrap">{fmtDateTime(e.postedAt)}</Td>
                   <Td className="!py-4 font-medium text-fg">{EVENT_LABEL[e.sourceType]}</Td>
                   <Td className="!py-4">
@@ -411,6 +436,9 @@ export function AuditLog() {
               onClick={() => setDetail(null)}
             />
             <motion.aside
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${EVENT_LABEL[detail.sourceType]} details`}
               className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-border bg-surface shadow-2xl"
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
