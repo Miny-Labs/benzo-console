@@ -132,7 +132,7 @@ export function Shell() {
                         <div className="truncate text-[12px] text-muted">{session?.member.name ?? "Signed in"}</div>
                       </div>
                     </div>
-                    <button role="menuitem" onClick={() => { setMenu(null); nav("/settings"); }} className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] text-[#3a4452] transition hover:bg-[#f4f3ef]">
+                    <button role="menuitem" onClick={() => { setMenu(null); nav("/settings"); }} className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] text-[#3a4452] outline-none transition hover:bg-[#f4f3ef] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40">
                       <Settings size={15} className="text-[#8a9099]" /> Settings &amp; team
                     </button>
                     <div className="border-t border-border px-3.5 py-2.5 text-[11.5px] text-muted">
@@ -151,7 +151,8 @@ export function Shell() {
             <div className="relative flex-none">
               <button
                 onClick={() => setMenu((m) => (m === "bell" ? null : "bell"))}
-                aria-label="Notifications"
+                aria-label={pending ? `Notifications — ${pending} awaiting approval` : "Notifications"}
+                title={pending ? `${pending} awaiting approval` : "Notifications"}
                 aria-haspopup="menu"
                 aria-expanded={menu === "bell"}
                 data-testid="notifications"
@@ -173,7 +174,7 @@ export function Shell() {
                   >
                     <div className="border-b border-border px-3.5 py-3 text-[13px] font-semibold text-ink">Notifications</div>
                     {pending ? (
-                      <button onClick={() => { setMenu(null); nav("/approvals"); }} className="flex w-full items-start gap-2.5 px-3.5 py-3 text-left transition hover:bg-[#f4f3ef]">
+                      <button onClick={() => { setMenu(null); nav("/approvals"); }} className="flex w-full items-start gap-2.5 px-3.5 py-3 text-left outline-none transition hover:bg-[#f4f3ef] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40">
                         <span className="mt-0.5 flex h-7 w-7 flex-none items-center justify-center rounded-full bg-primary/10 text-primary"><CheckCheck size={15} /></span>
                         <span className="min-w-0">
                           <span className="block text-[13px] font-medium text-ink">{pending} payment{pending === 1 ? "" : "s"} awaiting approval</span>

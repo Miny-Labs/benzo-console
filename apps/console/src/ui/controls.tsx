@@ -134,7 +134,28 @@ export function Td({ children, align = "left", className = "" }: { children?: Re
   return <td className={`border-t border-border px-4 py-2.5 text-fg ${ALIGN[align]} ${className}`}>{children}</td>;
 }
 export function Tr({ children, onClick, className = "", ...rest }: { children: ReactNode; onClick?: () => void; className?: string } & Omit<HTMLAttributes<HTMLTableRowElement>, "onClick">) {
-  return <tr onClick={onClick} className={`${onClick ? "cursor-pointer hover:bg-border/30" : ""} ${className}`} {...rest}>{children}</tr>;
+  // A clickable row is keyboard-operable: focusable, Enter/Space activate it, and it
+  // shows an inset focus ring. Non-interactive rows stay out of the tab order.
+  return (
+    <tr
+      onClick={onClick}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      className={`${onClick ? "cursor-pointer outline-none hover:bg-border/30 focus-visible:bg-border/30 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40" : ""} ${className}`}
+      {...rest}
+    >
+      {children}
+    </tr>
+  );
 }
 
 // ---------------------------------------------------------------- tabs
@@ -209,7 +230,7 @@ export function CopyButton({ value }: { value: string }) {
         void copyTextToClipboard(value).then((ok) => setDone(ok ? "copied" : "blocked"));
         setTimeout(() => setDone("idle"), 1200);
       }}
-      className="rounded p-1 text-muted outline-none transition hover:bg-border/50 focus-visible:ring-2 focus-visible:ring-primary/40"
+      className="inline-flex h-6 w-6 items-center justify-center rounded text-muted outline-none transition hover:bg-border/50 focus-visible:ring-2 focus-visible:ring-primary/40"
       aria-label={done === "blocked" ? "Copy blocked" : done === "copied" ? "Copied" : "Copy"}
       title={done === "blocked" ? "Copy blocked. Select the value manually." : done === "copied" ? "Copied" : "Copy"}
     >

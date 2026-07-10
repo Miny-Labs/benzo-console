@@ -454,10 +454,10 @@ export function Payroll() {
                 ) : null}
               </div>
               <div className="flex items-center gap-4">
-                <button onClick={() => downloadPayslips(drawerBatch)} className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline" data-testid="download-payslips" type="button">
+                <button onClick={() => downloadPayslips(drawerBatch)} className="inline-flex items-center gap-1 rounded text-[12px] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40" data-testid="download-payslips" type="button">
                   <Download size={13} /> Payslips
                 </button>
-                <button onClick={() => exportCsv(drawerBatch)} className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline" data-testid="export-csv" type="button">
+                <button onClick={() => exportCsv(drawerBatch)} className="inline-flex items-center gap-1 rounded text-[12px] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40" data-testid="export-csv" type="button">
                   <Download size={13} /> Export CSV
                 </button>
               </div>
@@ -506,7 +506,7 @@ export function Payroll() {
                         <div className="flex items-center gap-2">
                           {l.status === "paid" && !l.onChain ? <Pill tone="warning">not on-chain</Pill> : <StatusPill status={l.status} />}
                           {l.txHash ? (
-                            <a href={explorerTxUrl(l.txHash)} target="_blank" rel="noreferrer" className="text-[12px] font-semibold text-primary hover:underline">receipt</a>
+                            <a href={explorerTxUrl(l.txHash)} target="_blank" rel="noreferrer" className="rounded text-[12px] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40">receipt</a>
                           ) : null}
                         </div>
                       </Td>

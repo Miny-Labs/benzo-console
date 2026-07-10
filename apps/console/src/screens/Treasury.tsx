@@ -592,7 +592,7 @@ export function Treasury() {
                 <Send size={14} /> Sent on-chain
               </div>
               {sendResult.txHash ? (
-                <a href={explorerTxUrl(sendResult.txHash)} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline">
+                <a href={explorerTxUrl(sendResult.txHash)} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 rounded text-[12px] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40">
                   View on explorer <ArrowUpRight size={12} />
                 </a>
               ) : null}
@@ -675,7 +675,7 @@ function FundReceipt({ txHash }: { txHash?: string }) {
       </div>
       <div className="text-white/60">It's now part of your dual-controlled private balance — hidden from the public blockchain.</div>
       {txHash ? (
-        <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] font-semibold text-white hover:underline">
+        <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded text-[12px] font-semibold text-white outline-none hover:underline focus-visible:ring-2 focus-visible:ring-white/50">
           View on {NETWORK_LABEL} explorer <ArrowUpRight size={12} />
         </a>
       ) : null}

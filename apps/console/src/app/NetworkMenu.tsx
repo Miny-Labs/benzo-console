@@ -174,7 +174,7 @@ function InfoRow({ k, v, href, truncate, title }: { k: string; v: string; href?:
     <div className="flex items-center justify-between gap-3 py-0.5">
       <span className="flex-none text-muted">{k}</span>
       {href ? (
-        <a href={href} target="_blank" rel="noreferrer" title={title ?? v} className={`min-w-0 font-medium text-primary hover:underline ${truncate ? "truncate" : ""}`}>
+        <a href={href} target="_blank" rel="noreferrer" title={title ?? v} className={`min-w-0 rounded font-medium text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40 ${truncate ? "truncate" : ""}`}>
           {v}
         </a>
       ) : (
