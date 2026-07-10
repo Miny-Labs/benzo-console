@@ -310,8 +310,7 @@ export function AuditLog() {
             <span className="text-muted">–</span>
             <Input type="date" aria-label="To date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="audit-to" />
           </div>
-          <div className="flex items-center justify-between gap-2 sm:col-span-2 lg:col-span-3">
-            <span className="t-helper">Times shown in your local timezone</span>
+          <div className="flex items-center justify-end gap-2 sm:col-span-2 lg:col-span-3">
             <Button variant="outline" size="sm" onClick={exportCsv} disabled={filtered.length === 0} data-testid="audit-export">
               <Download size={14} /> Export CSV
             </Button>

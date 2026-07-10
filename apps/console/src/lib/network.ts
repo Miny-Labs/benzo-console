@@ -7,8 +7,10 @@ import {
 
 const env = import.meta.env as unknown as Record<string, string | undefined>;
 
-/** "fuji" (default) | "benzonet" | "avalanche". */
-export const NETWORK: BenzoNetwork = networkFromEnv(env.VITE_CHAIN_ENV ?? env.VITE_BENZO_NETWORK);
+/** The network this console runs on. Benzo Console is a managed enterprise product
+ *  on the permissioned **BenzoNet** L1, so that's the default when no build env pins
+ *  one; "fuji" / "avalanche" are still selectable via VITE_CHAIN_ENV for other builds. */
+export const NETWORK: BenzoNetwork = networkFromEnv(env.VITE_CHAIN_ENV ?? env.VITE_BENZO_NETWORK ?? "benzonet");
 
 export const CHAIN = chainForNetwork(NETWORK);
 

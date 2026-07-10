@@ -143,7 +143,6 @@ export function Shell() {
               </AnimatePresence>
             </div>
             <CommandBar />
-            <div className="flex-1" />
             <NetworkMenu live={live} />
             <button onClick={toggleMasked} aria-label="Toggle amount masking" data-testid="mask-toggle" className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px] border border-border text-[#6b6f74] outline-none transition hover:bg-[#f4f3ef] focus-visible:ring-2 focus-visible:ring-primary/40 active:scale-95">
               {masked ? <EyeOff size={17} /> : <Eye size={17} />}
