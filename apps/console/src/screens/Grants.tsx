@@ -221,9 +221,11 @@ export function Grants() {
         title="Auditor access"
         subtitle="Read-only access for auditors. They see exactly what you grant, and nothing else."
         action={
-          <Button onClick={() => setOpen(true)} data-testid="new-grant">
-            <Plus size={15} /> Grant access
-          </Button>
+          tab === "access" ? (
+            <Button onClick={() => setOpen(true)} data-testid="new-grant">
+              <Plus size={15} /> Grant access
+            </Button>
+          ) : undefined
         }
       />
 
@@ -240,13 +242,12 @@ export function Grants() {
 
       {tab === "access" ? (
         <>
-          <div className="mb-3 inline-flex rounded-lg border border-border p-0.5" role="tablist" aria-label="Access filter">
+          <div className="mb-3 inline-flex rounded-lg border border-border p-0.5" role="group" aria-label="Filter grants by status">
             {(["active", "inactive"] as AccessFilter[]).map((f) => (
               <button
                 key={f}
                 type="button"
-                role="tab"
-                aria-selected={accessFilter === f}
+                aria-pressed={accessFilter === f}
                 onClick={() => setAccessFilter(f)}
                 data-testid={`access-filter-${f}`}
                 className={`rounded-md px-3 py-1 text-[13px] font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 ${
