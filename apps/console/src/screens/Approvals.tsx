@@ -59,7 +59,7 @@ function matchPolicy(p: PaymentOrder, policies: ApprovalPolicy[]): ApprovalPolic
     if (byId) return byId;
   }
   const amount = BigInt(p.amount.amount);
-  return policies.find((pol) =>
+  const matches = policies.filter((pol) =>
     pol.conditions.every((c) => {
       if (c.field !== "amount" || Array.isArray(c.value)) return true;
       const v = BigInt(c.value || "0");
@@ -73,6 +73,10 @@ function matchPolicy(p: PaymentOrder, policies: ApprovalPolicy[]): ApprovalPolic
       }
     }),
   );
+  // Overlapping ranges → prefer the MOST-SPECIFIC policy (most amount conditions),
+  // deterministically, rather than whichever happened to be first in the array.
+  const amountConds = (pol: ApprovalPolicy) => pol.conditions.filter((c) => c.field === "amount").length;
+  return matches.sort((a, b) => amountConds(b) - amountConds(a))[0];
 }
 
 /** Segmented M-of-N progress — filled segments for recorded approvals. */
@@ -96,6 +100,9 @@ export function Approvals() {
   const { payments, members, policies, masked, refresh, loading } = useConsole();
   const name = useCounterpartyName();
   const [busy, setBusy] = useState<string | null>(null);
+  // Track WHICH action is in flight so the row's Approve/Deny spinners key off the
+  // real action, not the unrelated deny-dialog (`denyFor`) state.
+  const [busyAction, setBusyAction] = useState<"approve" | "deny" | null>(null);
   const [confirm, setConfirm] = useState<{ p: PaymentOrder; willRelease: boolean } | null>(null);
   const [denyFor, setDenyFor] = useState<PaymentOrder | null>(null);
   const [denyReason, setDenyReason] = useState("");
@@ -107,6 +114,7 @@ export function Approvals() {
 
   async function decide(p: PaymentOrder, decision: "approved" | "denied", comment?: string) {
     setBusy(p.id);
+    setBusyAction(decision === "denied" ? "deny" : "approve");
     try {
       const updated = await api.approvePayment(p.id, { decision, comment });
       const prog = updated.progress;
@@ -125,6 +133,7 @@ export function Approvals() {
       toast({ title: friendlyError(e), tone: "danger" });
     } finally {
       setBusy(null);
+      setBusyAction(null);
       setConfirm(null);
       setDenyFor(null);
       setDenyReason("");
@@ -163,9 +172,13 @@ export function Approvals() {
           <AnimatePresence initial={false}>
             {pending.map((p, i) => {
               const policy = matchPolicy(p, policies);
-              const need = policy ? totalApprovers(policy) : 2;
               const approvedTrail = (p.approvals ?? []).filter((a) => a.decision === "approved");
               const have = approvedTrail.length;
+              const knownNeed = policy ? totalApprovers(policy) : null;
+              // Only claim this approval RELEASES the payment when the threshold is
+              // actually known — an unresolved policy must not over-promise a settle.
+              const willRelease = knownNeed != null && have + 1 >= knownNeed;
+              const need = knownNeed ?? Math.max(have + 1, 2); // display fallback for the progress bar
               const risky = BigInt(p.amount.amount) > HIGH_VALUE;
               return (
                 <motion.div
@@ -221,7 +234,7 @@ export function Approvals() {
                           <Button
                             variant="outline"
                             className="!border-danger/40 !text-danger hover:!bg-danger/8"
-                            loading={busy === p.id && !!denyFor}
+                            loading={busy === p.id && busyAction === "deny"}
                             onClick={() => {
                               setDenyReason("");
                               setDenyFor(p);
@@ -231,8 +244,8 @@ export function Approvals() {
                             <X size={15} /> Deny
                           </Button>
                           <Button
-                            loading={busy === p.id && !denyFor}
-                            onClick={() => setConfirm({ p, willRelease: have + 1 >= need })}
+                            loading={busy === p.id && busyAction === "approve"}
+                            onClick={() => setConfirm({ p, willRelease })}
                             data-testid="approve-btn"
                           >
                             <Check size={15} /> Approve
