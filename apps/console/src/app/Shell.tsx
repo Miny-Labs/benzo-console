@@ -24,8 +24,8 @@ import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-d
 import { StageVideo } from "../ui/StageVideo";
 import { CommandBar } from "./CommandBar";
 import { AvalancheMark, Logo } from "../ui/Logo";
+import { NetworkMenu } from "./NetworkMenu";
 import { useConsole } from "../lib/store";
-import { NETWORK_LABEL } from "../lib/network";
 import { Dashboard } from "../screens/Dashboard";
 import { Approvals } from "../screens/Approvals";
 import { Contractors } from "../screens/Contractors";
@@ -147,16 +147,7 @@ export function Shell() {
             </div>
             <CommandBar />
             <div className="flex-1" />
-            <span
-              className={`flex flex-none items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] font-semibold ${
-                live ? "border-success/25 bg-success/10 text-[#1d7a52]" : "border-warning/30 bg-warning/12 text-[#9a6b12]"
-              }`}
-              data-testid="live-badge"
-              title={live ? `Payments settle on ${NETWORK_LABEL}` : "Live chain connection unavailable"}
-            >
-              <AvalancheMark size={13} className="flex-none" />
-              {live ? `Live · ${NETWORK_LABEL}` : "Chain unavailable"}
-            </span>
+            <NetworkMenu live={live} />
             <button onClick={toggleMasked} aria-label="Toggle amount masking" data-testid="mask-toggle" className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px] border border-border text-[#6b6f74] outline-none transition hover:bg-[#f4f3ef] focus-visible:ring-2 focus-visible:ring-primary/40 active:scale-95">
               {masked ? <EyeOff size={17} /> : <Eye size={17} />}
             </button>

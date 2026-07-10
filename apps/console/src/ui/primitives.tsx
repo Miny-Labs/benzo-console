@@ -134,7 +134,7 @@ export function Stat({ label, value, hint }: { label: string; value: ReactNode; 
   return (
     <Card className="p-4">
       <div className="text-xs uppercase tracking-wide text-muted">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-fg tabular-nums">{value}</div>
+      <div className="mt-1 text-2xl font-semibold text-fg">{value}</div>
       {hint ? <div className="mt-1 text-xs text-muted">{hint}</div> : null}
     </Card>
   );

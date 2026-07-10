@@ -426,7 +426,7 @@ function Stepper({ value, onDec, onInc, testid }: { value: number; onDec: () => 
       >
         <Minus size={15} />
       </motion.button>
-      <span className="w-5 text-center text-[15px] font-semibold tabular-nums" data-testid={`${testid}-value`}>{value}</span>
+      <span className="w-5 text-center text-[15px] font-semibold" data-testid={`${testid}-value`}>{value}</span>
       <motion.button
         type="button"
         whileTap={{ scale: 0.9 }}

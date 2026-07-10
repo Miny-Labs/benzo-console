@@ -146,13 +146,13 @@ export function Contractors() {
         <Stagger.Item index={0} className="h-full">
           <Card className="h-full p-4">
             <div className="text-xs uppercase tracking-wide text-muted">Active contractors</div>
-            <div className="font-display mt-1 text-2xl tabular-nums">{payable.length}</div>
+            <div className="font-display mt-1 text-2xl">{payable.length}</div>
           </Card>
         </Stagger.Item>
         <Stagger.Item index={1} className="h-full">
           <Card className="h-full p-4">
             <div className="text-xs uppercase tracking-wide text-muted">Monthly run total</div>
-            <div className="font-display mt-1 text-2xl tabular-nums">{fmtUsd(monthlyTotal)}</div>
+            <div className="font-display mt-1 text-2xl">{fmtUsd(monthlyTotal)}</div>
           </Card>
         </Stagger.Item>
       </Stagger>
@@ -212,7 +212,7 @@ export function Contractors() {
                             />
                           ) : (
                             <button
-                              className="rounded font-display tabular-nums text-[15px] text-fg outline-none transition hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40"
+                              className="rounded font-display text-[15px] text-fg outline-none transition hover:text-primary focus-visible:ring-2 focus-visible:ring-primary/40"
                               onClick={() => setRateEdits((m) => ({ ...m, [c.id]: c.payRate ? minorToUsdc(c.payRate.amount) : "" }))}
                               title="Click to edit rate"
                               data-testid="contractor-rate-edit"
@@ -305,7 +305,7 @@ export function Contractors() {
                                       {e.txHash ? (
                                         <a href={explorerTxUrl(e.txHash)} target="_blank" rel="noreferrer" className="text-[11px] font-semibold text-primary hover:underline">on-chain receipt</a>
                                       ) : null}
-                                      <span className="font-display ml-auto tabular-nums text-fg">{fmtUsd(e.amount)}</span>
+                                      <span className="font-display ml-auto text-fg">{fmtUsd(e.amount)}</span>
                                     </div>
                                   ))}
                                 </div>
