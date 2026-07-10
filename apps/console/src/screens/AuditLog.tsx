@@ -1,34 +1,40 @@
 /**
- * Audit log - the tamper-evident double-entry ledger, finally on screen. Every
- * shielded movement projects to a balanced entry whose hash commits to the one
- * before it, so any after-the-fact edit/insert/delete breaks the chain from that
- * point on. "Generate auditor packet" re-walks the chain, folds every encrypted
- * event under one Merkle root, and anchors that root on-chain - one full-screen,
- * re-verifiable disclosure. Each entry links to its on-chain settlement. This is
- * the CFO/auditor-readable side of private money.
+ * Audit log — the tamper-evident double-entry ledger on screen. Every shielded
+ * movement projects to a balanced entry whose hash commits to the one before it, so
+ * any after-the-fact edit/insert/delete breaks the chain. A dense, filterable table
+ * (search, date range, event, account, status, export) with a per-row detail drawer.
+ * "Generate auditor packet" re-walks the chain, folds every encrypted event under one
+ * Merkle root, and anchors it on-chain — one full-screen, re-verifiable disclosure.
  */
-import { useEffect, useReducer, useState } from "react";
-import { CheckCircle2, Download, ExternalLink, ScrollText, ShieldAlert } from "lucide-react";
+import { useEffect, useMemo, useReducer, useState } from "react";
+import { CheckCircle2, Download, ExternalLink, ScrollText, Search, ShieldAlert, X } from "lucide-react";
 import type { LedgerEntry, LedgerSourceType } from "@benzo/types";
 import { initialPaymentState, paymentReducer } from "@benzo/ui/payment-state";
 import { api, type PrivateAuditAnchorResponse, type PrivateAuditPacketResponse } from "../lib/api";
-import { explorerTxUrl, fmtUsd, formatAddress, formatDate, friendlyError } from "../lib/format";
+import { explorerTxUrl, fmtDateTime, fmtUsd, formatAddress, friendlyError, minorToUsdc } from "../lib/format";
 import { CeremonyRow } from "../ui/CeremonyRow";
-import { Screen, Stagger } from "../ui/motion";
+import { AnimatePresence, motion, Screen } from "../ui/motion";
 import { SendCeremony, type CeremonyTitles } from "../ui/SendCeremony";
-import { Button, Card, EmptyState, Pill, Skeleton } from "../ui/primitives";
+import { Button, Card, CopyButton, EmptyState, Input, MetaPill, PageHeader, Pill, Select, Skeleton, Table, Td, Th, Tr } from "../ui/primitives";
 
-const sourceTone: Record<LedgerSourceType, "shielded" | "success" | "warning" | "danger" | "muted"> = {
-  shield: "shielded",
-  transfer: "shielded",
-  payroll: "success",
-  invoice: "success",
-  unshield: "warning",
-  onramp: "success",
-  offramp: "warning",
-  fee: "muted",
-  reversal: "danger",
+const PAGE_SIZE = 12;
+
+const EVENT_LABEL: Record<LedgerSourceType, string> = {
+  shield: "Moved to private",
+  transfer: "Private transfer",
+  unshield: "Moved to public",
+  payroll: "Payroll run",
+  invoice: "Invoice paid",
+  onramp: "Deposit",
+  offramp: "Withdrawal",
+  fee: "Network fee",
+  reversal: "Reversal",
 };
+
+const ALL_EVENTS = Object.keys(EVENT_LABEL) as LedgerSourceType[];
+
+type Finality = "confirmed" | "pending" | "failed" | "reversed";
+const FINALITY_LABEL: Record<Finality, string> = { confirmed: "Confirmed", pending: "Pending", failed: "Failed", reversed: "Reversed" };
 
 // Prove-flavored copy for the shared send ceremony. The packet is only "verified"
 // once its Merkle root is anchored on-chain; anything short of that fails clearly.
@@ -44,17 +50,56 @@ function entryGross(e: LedgerEntry): string {
   return e.lines.filter((l) => l.direction === "credit").reduce((s, l) => s + BigInt(l.amount), 0n).toString();
 }
 
+/** The account value lands in (credit leg), for the Account column. */
+function accountFor(e: LedgerEntry): string {
+  return e.lines.find((l) => l.direction === "credit")?.accountId ?? e.lines[0]?.accountId ?? "";
+}
+
+/** "acct_operating" -> "Operating" — a friendly bucket label, no store needed. */
+function accountLabel(id: string): string {
+  const base = id.replace(/^acct_/, "").replace(/_/g, " ");
+  return base ? base.charAt(0).toUpperCase() + base.slice(1) : "—";
+}
+
+/** Settlement finality of an entry. */
+function finalityOf(e: LedgerEntry): Finality {
+  if (e.sourceType === "reversal" || e.reversalOf) return "reversed";
+  if (e.txId) return "confirmed";
+  return "pending";
+}
+
+function FinalityPill({ f }: { f: Finality }) {
+  if (f === "confirmed") return <Pill tone="success">Confirmed</Pill>;
+  if (f === "pending") return <Pill tone="warning">Pending</Pill>;
+  if (f === "failed") return <Pill tone="danger">Failed</Pill>;
+  return <MetaPill>Reversed</MetaPill>;
+}
+
+function csvCell(v: string): string {
+  return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+
 export function AuditLog() {
   const [entries, setEntries] = useState<LedgerEntry[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  // "Generate auditor packet" is one full-screen action, driven by the shared
-  // payment state machine so verify -> fold -> anchor plays honestly.
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Auditor packet ceremony (kept verbatim: verify -> fold -> anchor).
   const [packetState, dispatchPacket] = useReducer(paymentReducer, initialPaymentState);
   const [integrity, setIntegrity] = useState<{ ok: boolean; length: number; brokenAt?: number } | null>(null);
   const [packet, setPacket] = useState<PrivateAuditPacketResponse["packet"] | null>(null);
   const [anchor, setAnchor] = useState<PrivateAuditAnchorResponse["anchor"] | null>(null);
 
-  const [reloadKey, setReloadKey] = useState(0);
+  // Filters + pagination + detail drawer.
+  const [search, setSearch] = useState("");
+  const [eventType, setEventType] = useState<"all" | LedgerSourceType>("all");
+  const [accountFilter, setAccountFilter] = useState<"all" | string>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | Finality>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [page, setPage] = useState(0);
+  const [detail, setDetail] = useState<LedgerEntry | null>(null);
+
   useEffect(() => {
     let live = true;
     setLoadError(null);
@@ -70,9 +115,33 @@ export function AuditLog() {
     };
   }, [reloadKey]);
 
-  // One action: re-walk the tamper-evident chain, fold the encrypted events under a
-  // Merkle root, anchor that root on-chain. The ceremony is a slave to the result -
-  // it only reaches "verified" if the root actually anchored on-chain.
+  const accountOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const e of entries ?? []) for (const l of e.lines) ids.add(l.accountId);
+    return [...ids];
+  }, [entries]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (entries ?? []).filter((e) => {
+      if (eventType !== "all" && e.sourceType !== eventType) return false;
+      if (statusFilter !== "all" && finalityOf(e) !== statusFilter) return false;
+      if (accountFilter !== "all" && !e.lines.some((l) => l.accountId === accountFilter)) return false;
+      if (dateFrom && new Date(e.postedAt) < new Date(dateFrom)) return false;
+      if (dateTo && new Date(e.postedAt) > new Date(`${dateTo}T23:59:59`)) return false;
+      if (q) {
+        const hay = [e.hash, e.txId, e.sourceId, e.id].filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [entries, search, eventType, statusFilter, accountFilter, dateFrom, dateTo]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pageClamped = Math.min(page, totalPages - 1);
+  const pageRows = filtered.slice(pageClamped * PAGE_SIZE, pageClamped * PAGE_SIZE + PAGE_SIZE);
+  useEffect(() => setPage(0), [search, eventType, statusFilter, accountFilter, dateFrom, dateTo]);
+
   async function generatePacket() {
     dispatchPacket({ type: "START" });
     setIntegrity(null);
@@ -122,6 +191,28 @@ export function AuditLog() {
     URL.revokeObjectURL(url);
   }
 
+  function exportCsv() {
+    const header = ["Date & time", "Event", "Reference", "Account", "Amount (USDC)", "Status", "Receipt"];
+    const lines = filtered.map((e) =>
+      [
+        fmtDateTime(e.postedAt),
+        EVENT_LABEL[e.sourceType],
+        e.hash ?? "",
+        accountLabel(accountFor(e)),
+        minorToUsdc(entryGross(e)),
+        FINALITY_LABEL[finalityOf(e)],
+        e.txId ? explorerTxUrl(e.txId) : "",
+      ].map(csvCell).join(","),
+    );
+    const blob = new Blob([[header.join(","), ...lines].join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "benzo-audit-log.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <Screen>
       <SendCeremony
@@ -140,9 +231,7 @@ export function AuditLog() {
                 {packet.envelopes.length} encrypted events sealed under one Merkle root. Records stay ciphertext; only the root goes on-chain.
               </div>
               <div className="font-mono text-[12px] text-white/56">Merkle root {formatAddress(packet.anchor.merkleRoot, 8, 6)}</div>
-              {anchor?.onChain ? (
-                <div className="font-mono text-[12px] text-white/56">On-chain · sequence {anchor.sequence}</div>
-              ) : null}
+              {anchor?.onChain ? <div className="font-mono text-[12px] text-white/56">On-chain · sequence {anchor.sequence}</div> : null}
               {anchor?.explorer ? (
                 <a href={anchor.explorer} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline">
                   View root transaction <ExternalLink size={12} />
@@ -159,34 +248,62 @@ export function AuditLog() {
               : undefined
         }
         secondaryAction={
-          packetState.phase === "confirmed"
-            ? { label: "Done", onClick: () => dispatchPacket({ type: "RESET" }), variant: "outline" }
-            : undefined
+          packetState.phase === "confirmed" ? { label: "Done", onClick: () => dispatchPacket({ type: "RESET" }), variant: "outline" } : undefined
         }
       />
 
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl">Audit log</h1>
-          <p className="mt-1 text-[13.5px] text-muted">
-            A tamper-evident double-entry record of every movement. Balances are derived from these; corrections are reversals, never edits.
-          </p>
-        </div>
-      </div>
-
-      <Card className="mb-5 p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-[14px] font-semibold">
-              <ScrollText size={16} className="text-primary" /> Auditor packet
-            </div>
-            <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-muted">
-              Re-walk the tamper-evident chain, fold every encrypted event under one Merkle root, and anchor that root on-chain - one signed, re-verifiable packet an auditor can check without trusting Benzo. Records stay ciphertext; only hashes and the root go on-chain.
-            </p>
-          </div>
-          <Button className="flex-none" onClick={generatePacket} data-testid="generate-packet">
+      <PageHeader
+        title="Audit log"
+        subtitle="A tamper-evident double-entry record of every movement. Corrections are reversals, never edits."
+        action={
+          <Button onClick={generatePacket} data-testid="generate-packet">
             <ShieldAlert size={15} /> Generate auditor packet
           </Button>
+        }
+      />
+
+      {/* Filters */}
+      <Card compact className="mb-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="relative sm:col-span-2 lg:col-span-1">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search reference or hash…"
+              data-testid="audit-search"
+              className="h-11 w-full rounded-lg border border-border bg-bg pl-9 pr-3 text-sm text-fg outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <Select value={eventType} onChange={(e) => setEventType(e.target.value as typeof eventType)} data-testid="audit-event">
+            <option value="all">All events</option>
+            {ALL_EVENTS.map((s) => (
+              <option key={s} value={s}>{EVENT_LABEL[s]}</option>
+            ))}
+          </Select>
+          <Select value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)} data-testid="audit-account">
+            <option value="all">All accounts</option>
+            {accountOptions.map((id) => (
+              <option key={id} value={id}>{accountLabel(id)}</option>
+            ))}
+          </Select>
+          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} data-testid="audit-status">
+            <option value="all">All statuses</option>
+            {(Object.keys(FINALITY_LABEL) as Finality[]).map((f) => (
+              <option key={f} value={f}>{FINALITY_LABEL[f]}</option>
+            ))}
+          </Select>
+          <div className="flex items-center gap-2">
+            <Input type="date" aria-label="From date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} data-testid="audit-from" />
+            <span className="text-muted">–</span>
+            <Input type="date" aria-label="To date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="audit-to" />
+          </div>
+          <div className="flex items-center justify-between gap-2 sm:col-span-2 lg:col-span-3">
+            <span className="t-helper">Times shown in IST</span>
+            <Button variant="outline" size="sm" onClick={exportCsv} disabled={filtered.length === 0} data-testid="audit-export">
+              <Download size={14} /> Export CSV
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -198,51 +315,175 @@ export function AuditLog() {
           </div>
         </Card>
       ) : entries === null ? (
-        <div className="space-y-4">
-          {[0, 1, 2].map((i) => (
-            <Card key={i} className="flex items-center gap-4 p-4">
-              <Skeleton className="h-11 w-11 flex-none rounded-full" />
-              <div className="min-w-0 flex-1 space-y-2">
+        <Card className="p-0">
+          <div className="divide-y divide-border">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-4">
                 <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-3 w-56" />
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="ml-auto h-5 w-20 rounded-full" />
               </div>
-              <Skeleton className="h-5 w-20 flex-none" />
-            </Card>
-          ))}
-        </div>
+            ))}
+          </div>
+        </Card>
       ) : entries.length === 0 ? (
         <EmptyState title="No entries yet" hint="Ledger entries appear here as soon as money moves: a shield, a payroll run, an invoice paid." />
+      ) : filtered.length === 0 ? (
+        <EmptyState title="No matching entries" hint="Try clearing a filter or widening the date range." />
       ) : (
-        <Stagger className="space-y-4">
-          {entries.map((e, i) => (
-            <Stagger.Item key={e.id} index={i}>
-              <Card className="flex items-center gap-4 p-4">
-                <div className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <ScrollText size={19} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <Pill tone={sourceTone[e.sourceType] ?? "muted"}>{e.sourceType}</Pill>
-                    <span className="truncate text-[12.5px] text-muted">{formatDate(e.postedAt)}</span>
-                    {e.reversalOf ? <span className="text-[11.5px] font-semibold text-danger">reversal</span> : null}
-                  </div>
-                  <div className="mt-1 flex items-center gap-2 text-[11.5px] text-muted">
-                    <span className="font-mono" title="audit hash (commits to the previous entry)">
-                      {e.hash ? formatAddress(e.hash, 8, 6) : "-"}
-                    </span>
+        <>
+          <Table>
+            <thead>
+              <tr>
+                <Th>Date &amp; time</Th>
+                <Th>Event</Th>
+                <Th>Reference</Th>
+                <Th>Account</Th>
+                <Th align="right">Amount</Th>
+                <Th>Status</Th>
+                <Th align="right">Receipt</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.map((e) => (
+                <Tr key={e.id} onClick={() => setDetail(e)} data-testid="audit-row">
+                  <Td className="!py-4 whitespace-nowrap">{fmtDateTime(e.postedAt)}</Td>
+                  <Td className="!py-4 font-medium text-fg">{EVENT_LABEL[e.sourceType]}</Td>
+                  <Td className="!py-4">
+                    {e.hash ? (
+                      <span className="inline-flex items-center gap-1" onClick={(ev) => ev.stopPropagation()}>
+                        <span className="font-mono text-[12px] text-muted">{formatAddress(e.hash, 6, 4)}</span>
+                        <CopyButton value={e.hash} />
+                      </span>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </Td>
+                  <Td className="!py-4">{accountLabel(accountFor(e))}</Td>
+                  <Td align="right" className="!py-4 tnum">{fmtUsd(entryGross(e))}</Td>
+                  <Td className="!py-4"><FinalityPill f={finalityOf(e)} /></Td>
+                  <Td align="right" className="!py-4">
                     {e.txId ? (
-                      <a href={explorerTxUrl(e.txId)} target="_blank" rel="noreferrer" className="font-semibold text-primary hover:underline">
-                        on-chain receipt
+                      <a
+                        href={explorerTxUrl(e.txId)}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(ev) => ev.stopPropagation()}
+                        className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40"
+                      >
+                        Receipt <ExternalLink size={12} />
                       </a>
-                    ) : null}
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
+
+          <div className="mt-3 flex items-center justify-between">
+            <span className="t-helper">
+              Showing {pageClamped * PAGE_SIZE + 1}–{Math.min((pageClamped + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={pageClamped === 0} onClick={() => setPage((p) => Math.max(0, p - 1))} data-testid="audit-prev">
+                Previous
+              </Button>
+              <span className="t-helper">Page {pageClamped + 1} of {totalPages}</span>
+              <Button variant="outline" size="sm" disabled={pageClamped >= totalPages - 1} onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} data-testid="audit-next">
+                Next
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Detail side-drawer */}
+      <AnimatePresence>
+        {detail ? (
+          <>
+            <motion.div
+              className="fixed inset-0 z-40 bg-fg/30 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setDetail(null)}
+            />
+            <motion.aside
+              className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-border bg-surface shadow-2xl"
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", stiffness: 380, damping: 34 }}
+              data-testid="audit-drawer"
+            >
+              <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
+                <div className="t-card-title text-fg">{EVENT_LABEL[detail.sourceType]}</div>
+                <button type="button" onClick={() => setDetail(null)} aria-label="Close" className="rounded-md p-1 text-muted outline-none transition hover:bg-border/50 focus-visible:ring-2 focus-visible:ring-primary/40">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="space-y-4 px-5 py-4">
+                <dl className="divide-y divide-border rounded-lg border border-border bg-bg px-4 py-1 text-sm">
+                  <DrawerRow label="Date &amp; time" value={fmtDateTime(detail.postedAt)} />
+                  <DrawerRow label="Event" value={EVENT_LABEL[detail.sourceType]} />
+                  <DrawerRow label="Status" value={<FinalityPill f={finalityOf(detail)} />} />
+                  <DrawerRow label="Amount" value={fmtUsd(entryGross(detail))} />
+                  {detail.sourceId ? <DrawerRow label="Source" value={<span className="font-mono text-[12px]">{detail.sourceId}</span>} /> : null}
+                </dl>
+
+                <div>
+                  <div className="t-label mb-1.5 text-muted">Reference (audit hash)</div>
+                  {detail.hash ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-border bg-bg px-3 py-2">
+                      <span className="break-all font-mono text-[12px] text-fg">{detail.hash}</span>
+                      <span className="flex-none"><CopyButton value={detail.hash} /></span>
+                    </div>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </div>
+
+                <div>
+                  <div className="t-label mb-1.5 text-muted">Double-entry legs</div>
+                  <div className="divide-y divide-border rounded-lg border border-border bg-bg">
+                    {detail.lines.map((l, i) => (
+                      <div key={i} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                        <span className="text-fg">{accountLabel(l.accountId)}</span>
+                        <span className="flex items-center gap-2">
+                          <MetaPill>{l.direction}</MetaPill>
+                          <span className="tnum font-medium text-fg">{fmtUsd(l.amount)}</span>
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div className="font-display tnum flex-none text-right text-[15px] text-fg">{fmtUsd(entryGross(e))}</div>
-              </Card>
-            </Stagger.Item>
-          ))}
-        </Stagger>
-      )}
+
+                {detail.txId ? (
+                  <a
+                    href={explorerTxUrl(detail.txId)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[13px] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    View on-chain receipt <ExternalLink size={13} />
+                  </a>
+                ) : null}
+              </div>
+            </motion.aside>
+          </>
+        ) : null}
+      </AnimatePresence>
     </Screen>
+  );
+}
+
+function DrawerRow({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-2">
+      <dt className="text-muted">{label}</dt>
+      <dd className="font-medium text-fg">{value}</dd>
+    </div>
   );
 }
