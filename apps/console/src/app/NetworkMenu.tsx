@@ -1,12 +1,14 @@
 /**
- * Top-bar network switcher + chain info. The badge is now a button: click it to
- * switch Fuji / BenzoNet / mainnet and see the live chain details (id, RPC,
- * explorer). Selection persists locally; each network is branded with its mark.
+ * Top-bar network indicator + chain info — **read-only, not a switcher**. Benzo
+ * Console runs on a single chain (the permissioned BenzoNet L1 by default; pinned at
+ * build time), so this shows the active network's identity, environment, and details
+ * (chain id / RPC / explorer). There is no network selection: the console isn't
+ * multi-chain, and a "switcher" that couldn't actually re-point the app would be a lie.
  */
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { BENZO_EXPLORER_BY_NETWORK, chainForNetwork, networkFromEnv, type BenzoNetwork } from "@benzo/config";
+import { BENZO_EXPLORER_BY_NETWORK, chainForNetwork, type BenzoNetwork } from "@benzo/config";
 import { NETWORK, NETWORK_ENV_BY_NETWORK, NETWORK_LABEL_BY_NETWORK, type NetworkEnv } from "../lib/network";
 import { AvalancheMark, Logo } from "../ui/Logo";
 
@@ -17,7 +19,7 @@ function envToneCls(env: NetworkEnv): string {
     : "border-warning/30 bg-warning/12 text-[#9a6b12]";
 }
 
-/** Explicit environment badge for each option in the picker — Testnet / Mainnet / Permissioned L1. */
+/** Explicit environment badge — Testnet / Mainnet / Permissioned L1. */
 function EnvBadge({ env }: { env: NetworkEnv }) {
   return (
     <span className={`flex-none rounded-full border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${envToneCls(env)}`}>
@@ -25,9 +27,6 @@ function EnvBadge({ env }: { env: NetworkEnv }) {
     </span>
   );
 }
-
-const NETWORKS: BenzoNetwork[] = ["fuji", "benzonet", "avalanche"];
-const STORAGE_KEY = "benzo.console.network";
 
 function chainInfo(n: BenzoNetwork) {
   const c = chainForNetwork(n);
@@ -53,27 +52,8 @@ function Mark({ network, size }: { network: BenzoNetwork; size: number }) {
 }
 
 export function NetworkMenu({ live }: { live: boolean }) {
-  const [network, setNetwork] = useState<BenzoNetwork>(() => {
-    // Defensive read: a tampered / stale localStorage value (older key format)
-    // must not throw out of the initializer and crash the whole shell — fall
-    // back to the build-time NETWORK, matching the guarded write below.
-    try {
-      const stored = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-      return stored ? networkFromEnv(stored) : NETWORK;
-    } catch {
-      return NETWORK;
-    }
-  });
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, network);
-    } catch {
-      /* ignore */
-    }
-  }, [network]);
 
   useEffect(() => {
     if (!open) return;
@@ -89,17 +69,12 @@ export function NetworkMenu({ live }: { live: boolean }) {
     };
   }, [open]);
 
-  const info = chainInfo(network);
-  // SAFETY: the persistent chip (tone, label, heartbeat) is locked to the
-  // BUILD-TIME `NETWORK` — never the user's dropdown selection. The dropdown only
-  // browses other networks' chain details (id/RPC/explorer); browsing to
-  // "Avalanche" on a Fuji build must NOT flip the safety signal to green while the
-  // app is still talking to the testnet. `env` here is the real environment.
+  // Everything is keyed to the single build-time NETWORK — there is no selection.
+  const info = chainInfo(NETWORK);
   const env = NETWORK_ENV_BY_NETWORK[NETWORK];
   // Chrome by ENVIRONMENT (never by liveness): amber for testnet / permissioned L1,
-  // green only for real-money mainnet. A green "Live" chip on a testnet is the bug we
-  // are killing. Liveness is a separate axis: a subtle heartbeat dot when connected,
-  // and a red "Offline · …" state when the chain is unreachable.
+  // green only for real-money mainnet. Liveness is a separate axis — a subtle heartbeat
+  // when connected, a red "Offline · …" when the chain is unreachable.
   const chipTone = live ? envToneCls(env) : "border-danger/30 bg-danger/10 text-[#b4232a]";
   const chipLabel = live ? env.chip : `Offline · ${env.badge}`;
 
@@ -125,37 +100,19 @@ export function NetworkMenu({ live }: { live: boolean }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.97 }}
             transition={{ duration: 0.16 }}
-            role="menu"
             data-testid="network-menu"
             className="absolute right-0 top-full z-50 mt-2 w-72 origin-top-right rounded-2xl border border-border bg-surface p-3 shadow-[0_16px_40px_rgba(25,40,55,0.14)]"
           >
             <div className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#a3a7ac]">Network</div>
-            <div className="flex flex-col gap-1">
-              {NETWORKS.map((n) => {
-                const on = n === network;
-                const ci = chainInfo(n);
-                return (
-                  <button
-                    key={n}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={on}
-                    onClick={() => setNetwork(n)}
-                    data-testid={`network-menu-${n}`}
-                    className={`flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 ${on ? "bg-primary/[0.08]" : "hover:bg-[#f4f3ef]"}`}
-                  >
-                    <Mark network={n} size={24} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-[13px] font-semibold text-fg">{ci.label}</span>
-                        <EnvBadge env={NETWORK_ENV_BY_NETWORK[n]} />
-                      </div>
-                      <div className="truncate text-[11px] text-muted">{ci.kind}</div>
-                    </div>
-                    {on ? <Check size={15} className="flex-none text-primary" /> : null}
-                  </button>
-                );
-              })}
+            <div className="flex items-center gap-2.5 rounded-xl bg-primary/[0.06] px-2.5 py-2">
+              <Mark network={NETWORK} size={24} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-[13px] font-semibold text-fg">{info.label}</span>
+                  <EnvBadge env={env} />
+                </div>
+                <div className="truncate text-[11px] text-muted">{info.kind}</div>
+              </div>
             </div>
             <div className="mt-3 space-y-0.5 rounded-xl border border-border bg-bg p-2.5 text-[11.5px]" data-testid="network-chain-info">
               <InfoRow k="Chain ID" v={String(info.id)} />

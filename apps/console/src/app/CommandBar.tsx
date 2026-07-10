@@ -53,7 +53,7 @@ export function CommandBar() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="flex h-[34px] w-[300px] flex-none items-center gap-2 whitespace-nowrap rounded-[9px] border border-border bg-bg px-3 text-[13px] text-[#9a9ea3] outline-none transition hover:border-[#cfd2cc] focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20"
+        className="flex h-[34px] w-full flex-1 min-w-0 items-center gap-2 whitespace-nowrap rounded-[9px] border border-border bg-bg px-3 text-[13px] text-[#9a9ea3] outline-none transition hover:border-[#cfd2cc] focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20"
         data-testid="command-open"
       >
         <Search size={15} className="flex-none" />

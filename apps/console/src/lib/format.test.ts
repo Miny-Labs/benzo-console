@@ -15,8 +15,8 @@ describe("console money formatting", () => {
     expect(formatAddress("0x1234567890abcdef1234567890abcdef12345678")).toBe("0x12…5678");
     expect(formatAddress("short")).toBe("short");
   });
-  it("builds Avalanche Fuji explorer links by default", () => {
-    expect(explorerTxUrl("abc123")).toBe("https://testnet.snowtrace.io/tx/abc123");
-    expect(explorerContractUrl("0xabc")).toBe("https://testnet.snowtrace.io/address/0xabc");
+  it("builds BenzoNet explorer links by default (the console's L1)", () => {
+    expect(explorerTxUrl("abc123")).toBe("https://explorer.benzo.space/tx/abc123");
+    expect(explorerContractUrl("0xabc")).toBe("https://explorer.benzo.space/address/0xabc");
   });
 });
