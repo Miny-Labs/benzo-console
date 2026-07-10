@@ -110,7 +110,7 @@ export function Pay() {
           result?.status === "needs_approval"
             ? { label: "Approvals", onClick: () => nav("/approvals"), variant: "outline" }
             : result?.unpayable
-              ? { label: "Invites", onClick: () => nav("/invites"), variant: "outline" }
+              ? { label: "Contractors", onClick: () => nav("/contractors"), variant: "outline" }
               : undefined
         }
       />
@@ -201,8 +201,8 @@ export function Pay() {
                   Go to Approvals <ArrowRight size={13} />
                 </button>
               ) : result.unpayable ? (
-                <button onClick={() => nav("/invites")} className="inline-flex flex-none items-center gap-1 font-semibold text-primary hover:underline">
-                  Invite <ArrowRight size={13} />
+                <button onClick={() => nav("/contractors")} className="inline-flex flex-none items-center gap-1 font-semibold text-primary hover:underline">
+                  Contractors <ArrowRight size={13} />
                 </button>
               ) : null}
             </motion.div>

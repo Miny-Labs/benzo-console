@@ -14,7 +14,6 @@ const DESTINATIONS = [
   { label: "Payroll", to: "/payroll" },
   { label: "Invoices to pay", to: "/invoices" },
   { label: "Send & vendor pay", to: "/pay" },
-  { label: "Invites", to: "/invites" },
   { label: "Approvals", to: "/approvals" },
   { label: "Treasury", to: "/treasury" },
   { label: "Auditor grants", to: "/grants" },

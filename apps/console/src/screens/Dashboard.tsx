@@ -62,8 +62,8 @@ function FirstRunChecklist() {
 
   const items = [
     { key: "fund", done: funded, icon: Wallet, title: "Fund your treasury", hint: "Add USDC so you can run your first payout.", to: "/treasury", cta: "Fund treasury", doneCta: "Open" },
-    { key: "approver", done: hasApprover, icon: UserPlus, title: "Invite an approver", hint: "Maker-checker needs a proposer ≠ approver before any payout.", to: "/invites", cta: "Invite", doneCta: "Manage" },
-    { key: "policy", done: hasPolicy, icon: ShieldCheck, title: "Review approval policy", hint: "Confirm who can approve, release, and re-approve private payouts.", to: "/policies", cta: "Review policy", doneCta: "Review" },
+    { key: "approver", done: hasApprover, icon: UserPlus, title: "Invite an approver", hint: "Maker-checker needs a proposer ≠ approver before any payout.", to: "/settings", cta: "Invite", doneCta: "Manage" },
+    { key: "policy", done: hasPolicy, icon: ShieldCheck, title: "Review approval policy", hint: "Confirm who can approve, release, and re-approve private payouts.", to: "/settings", cta: "Review policy", doneCta: "Review" },
     { key: "contractors", done: hasContractor, icon: Users, title: "Add contractors", hint: "Import or invite the people you want to pay privately.", to: "/contractors", cta: "Add contractors", doneCta: "Open" },
     { key: "payroll", done: ranPayroll, icon: Users, title: "Run your first payroll", hint: "Pay your contractors privately - amounts stay confidential.", to: "/payroll", cta: "Start payroll", doneCta: "Open" },
   ] as const;
