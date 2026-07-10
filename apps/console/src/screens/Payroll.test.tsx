@@ -13,7 +13,7 @@ const apiMock = vi.hoisted(() => ({
 const refreshMock = vi.hoisted(() => vi.fn(async () => {}));
 // Mutable store the mocked hooks read, so each test picks its own fixtures.
 const store = vi.hoisted(() => ({
-  value: { payrolls: [] as unknown[], counterparties: [] as unknown[], masked: false, refresh: refreshMock, loading: false },
+  value: { payrolls: [] as unknown[], counterparties: [] as unknown[], policies: [] as unknown[], masked: false, refresh: refreshMock, loading: false },
 }));
 
 vi.mock("../lib/api", () => ({ api: apiMock }));
@@ -50,6 +50,31 @@ const settledBatch = {
   ],
   progress: { required: true, satisfied: true, nextRole: null, nextKind: null, steps: [] },
 };
+// A settled run that carries all three folded proofs — used to assert the proof
+// detail lives behind the "Technical details" disclosure in the run drawer.
+const provenBatch = {
+  ...batch,
+  id: "pr_done",
+  period: "2026-05",
+  status: "completed",
+  lines: [
+    { counterpartyId: "cp_1", amount: "5000000000", status: "paid", txHash: "0xaaa", onChain: true, capProof: { withinCap: true, onChain: true }, screenProof: { innocent: true, onChain: true } },
+    { counterpartyId: "cp_2", amount: "4000000000", status: "paid", txHash: "0xbbb", onChain: true, capProof: { withinCap: true, onChain: true }, screenProof: { innocent: true, onChain: true } },
+  ],
+  fundedProof: { funded: true, onChain: true, provenAt: "2026-05-01T00:00:00.000Z" },
+  approvalProof: { approved: true, onChain: true, approvers: 2, threshold: 2, memberCount: 4, provenAt: "2026-05-01T00:00:00.000Z" },
+  computationProof: { ok: true, onChain: true, runTotal: "9000000000", provenAt: "2026-05-01T00:00:00.000Z" },
+};
+// Two distinct approvers required, none recorded yet → this approval is NOT final.
+const twoStepPolicy = {
+  id: "pol_1",
+  orgId: "org_1",
+  name: "Payroll",
+  conditions: [],
+  steps: [{ role: "approver", mode: "all", minApprovers: 2 }],
+  reApprovalTriggers: [],
+  createdAt: "2026-01-01T00:00:00.000Z",
+};
 const ref = (label: string, vkId: string) => ({ label, vkId, verified: true, network: "fuji", txHash: "0xproof", publics: [] });
 
 function reducedMotion(on: boolean) {
@@ -74,6 +99,7 @@ describe("Payroll", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     reducedMotion(false);
+    store.value = { ...store.value, policies: [] };
     apiMock.proveFunded.mockResolvedValue({ onChain: true, funded: true, ref: ref("Payroll funded", "ORGBAL") });
     apiMock.provePolicy.mockResolvedValue({ onChain: true, lines: [] });
     apiMock.proveComputation.mockResolvedValue({ onChain: true, ok: true, ref: ref("Computed from rate card", "PAYCOMP") });
@@ -81,13 +107,64 @@ describe("Payroll", () => {
   });
   afterEach(() => vi.clearAllMocks());
 
+  it("renders a run as a dense table row: human period + one primary status, not the proof-badge cluster", () => {
+    store.value = { ...store.value, payrolls: [batch], counterparties: payableCounterparties };
+    render(<Payroll />);
+
+    // "2026-06" is humanised, and the process line replaces the long protocol sentence.
+    expect(screen.getByText("June 2026 payroll")).toBeInTheDocument();
+    expect(screen.getByText("Payroll runs after funding and approval checks pass.")).toBeInTheDocument();
+
+    // One primary approval status per row (awaiting approval) — NOT the three purple
+    // proof badges, which now live in the detail drawer's Technical details.
+    expect(screen.getByText("awaiting approval")).toBeInTheDocument();
+    expect(screen.queryByTestId("funded-badge")).toBeNull();
+    expect(screen.queryByTestId("approval-badge")).toBeNull();
+    expect(screen.queryByTestId("computation-badge")).toBeNull();
+
+    // Details is a real row action, and the settling action is precisely labelled.
+    expect(screen.getByTestId("open-details")).toBeInTheDocument();
+    expect(screen.getByTestId("run-payroll")).toHaveTextContent("Approve & run");
+  });
+
+  it("labels the action 'Approve' (not 'Approve & run') when this approval isn't the final one", () => {
+    // Policy needs two approvers, none recorded — so this click can't settle.
+    store.value = { ...store.value, payrolls: [batch], counterparties: payableCounterparties, policies: [twoStepPolicy] };
+    render(<Payroll />);
+
+    const btn = screen.getByTestId("run-payroll");
+    expect(btn).toHaveTextContent("Approve");
+    expect(btn).not.toHaveTextContent("Approve & run");
+  });
+
+  it("keeps the proof + anonymous-approval detail behind a Technical details disclosure in the drawer", async () => {
+    store.value = { ...store.value, payrolls: [provenBatch], counterparties: payableCounterparties };
+    render(<Payroll />);
+
+    // Collapsed by default and gated behind the drawer — no proof claims on the page.
+    expect(screen.queryByText("Funding confirmed")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("open-details"));
+    // The disclosure header exists, but the crypto detail stays folded until opened.
+    const disclosure = await screen.findByTestId("technical-details");
+    expect(screen.queryByText("Funding confirmed")).toBeNull();
+
+    fireEvent.click(disclosure);
+    // The three claims that used to crowd the row are here, and only here.
+    expect(await screen.findByText("Funding confirmed")).toBeInTheDocument();
+    expect(screen.getByText("Approval policy satisfied")).toBeInTheDocument();
+    expect(screen.getByText("Amounts calculated from rate cards")).toBeInTheDocument();
+    // Anonymous approver detail is disclosed here (2-of-4), not on the row.
+    expect(screen.getByText(/2-of-4 distinct approvers signed anonymously/)).toBeInTheDocument();
+  });
+
   it("folds the four manual proofs into one animated pass and drops the standalone proof buttons", async () => {
     store.value = { ...store.value, payrolls: [batch], counterparties: payableCounterparties };
     // Hold settlement so the ceremony stays in its proving pass while we assert.
     apiMock.approvePayroll.mockReturnValue(new Promise(() => {}));
     render(<Payroll />);
 
-    // No standalone proof buttons survive on the runnable card.
+    // No standalone proof buttons survive on the runnable row.
     expect(screen.queryByTestId("check-policy")).toBeNull();
     expect(screen.queryByTestId("check-funded")).toBeNull();
     expect(screen.queryByTestId("check-approval")).toBeNull();

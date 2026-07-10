@@ -2,25 +2,33 @@
  * Payroll - confidential batch runs. Each batch hides individual salaries on-chain
  * (one shielded transfer per person) while the employer can still prove the total.
  *
- * "Approve & run" is ONE animated pass: it proves funded (ORGBAL) + policy
- * (SPENDCAP/screen) + computation (PAYCOMP) + anonymous approval (ORGAUTH) and
- * settles the batch, shown through the shared full-screen send ceremony with
- * per-recipient progress. No standalone proof buttons on the happy path. Run
- * creation lives here too (New run pulls the allowlisted roster), so Payroll is
- * self-contained.
+ * Presentation is calm dense enterprise-finance: every run is a TABLE ROW
+ * (Period · People · Total · Approval · Settlement · Actions), not a giant card.
+ * Crypto/proof detail lives behind a "Technical details" disclosure inside the
+ * per-run detail drawer.
+ *
+ * The run flow is unchanged: "Approve & run" is ONE animated pass that proves
+ * funded (ORGBAL) + policy (SPENDCAP/screen) + computation (PAYCOMP) + anonymous
+ * approval (ORGAUTH) and settles the batch, shown through the shared full-screen
+ * send ceremony with per-recipient progress. The row action reads "Approve" when
+ * this operator's approval is NOT the final required one (nothing settles yet) and
+ * "Approve & run" only when it settles the run. Run creation lives here too.
  */
-import { useEffect, useReducer, useState } from "react";
-import { Check, CheckCheck, Download, Plus, ReceiptText, ShieldCheck, Users } from "lucide-react";
+import { useEffect, useReducer, useState, type ReactNode } from "react";
+import { Check, CheckCheck, ChevronDown, Download, Plus, ReceiptText, ShieldCheck, Users } from "lucide-react";
 import { useReducedMotion } from "framer-motion";
-import type { PayrollBatch, PayrollLine } from "@benzo/types";
+import type { ApprovalPolicy, PayrollBatch, PayrollLine } from "@benzo/types";
 import { initialPaymentState, type PaymentPhase, paymentReducer } from "@benzo/ui/payment-state";
 import { api, type OnChainRef } from "../lib/api";
 import { useConsole, useCounterpartyName } from "../lib/store";
 import { explorerTxUrl, fmtUsd, friendlyError } from "../lib/format";
-import { Screen, Stagger, motion, spring } from "../ui/motion";
+import { AnimatePresence, EASE, Screen, motion, spring } from "../ui/motion";
 import { OnChainDetail } from "../ui/onchain";
 import { SendCeremony } from "../ui/SendCeremony";
-import { Button, Card, EmptyState, Input, Modal, Pill, Skeleton, StatusPill, useToast } from "../ui/primitives";
+import {
+  Amount, Button, EmptyState, Input, Modal, PageHeader, Pill,
+  Skeleton, StatusPill, Table, Td, Th, Tr, useToast,
+} from "../ui/primitives";
 
 /** On-chain refs captured from the automated pass, per proof, for the receipt drill-down. */
 type RunRefs = { funded?: OnChainRef; approval?: OnChainRef; computation?: OnChainRef };
@@ -29,22 +37,72 @@ type RunOutcome = { total: number; paid: number; failed: number; onChain: boolea
 
 const period = () => new Date().toISOString().slice(0, 7); // e.g. 2026-06
 
+const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** "2026-07" (or "2026-07 payroll") → "July 2026". Unrecognised labels pass through. */
+function monthYear(label: string): string {
+  const m = /(\d{4})-(\d{1,2})/.exec(label);
+  if (!m) return label.replace(/payroll/gi, "").trim() || label;
+  return `${MONTHS_LONG[Number(m[2]) - 1] ?? m[2]} ${m[1]}`;
+}
+
+const approvedCount = (b: PayrollBatch) => (b.approvals ?? []).filter((a) => a.decision === "approved").length;
+const hasFailed = (b: PayrollBatch) => b.lines.some((l) => l.status === "failed");
+
+/**
+ * Best-effort required-approver count so the row action can predict whether THIS
+ * approval settles the run. Prefers a proven threshold, then the org's approval
+ * policy (stage minimums + release gate), and defaults to a single approval. The
+ * runtime stays honest regardless: a non-final approval closes the ceremony
+ * without ever claiming a settlement it didn't do.
+ */
+function requiredApprovers(b: PayrollBatch, policies: ApprovalPolicy[]): number {
+  if (b.approvalProof?.threshold) return b.approvalProof.threshold;
+  const pol = (policies ?? [])[0];
+  if (pol) return Math.max(1, pol.steps.reduce((s, st) => s + st.minApprovers, 0) + (pol.releaseGate?.minApprovers ?? 0));
+  return 1;
+}
+/** Does this operator's approval settle the run (approvals already met, or this one reaches the threshold)? */
+function settlesOnApprove(b: PayrollBatch, policies: ApprovalPolicy[]): boolean {
+  return b.status === "approved" || approvedCount(b) + 1 >= requiredApprovers(b, policies);
+}
+/** Precise row action label: "Retry failed" · "Approve" (not final) · "Approve & run" (settles). */
+function rowAction(b: PayrollBatch, policies: ApprovalPolicy[]): string {
+  if (b.status === "processing" && hasFailed(b)) return "Retry failed";
+  return settlesOnApprove(b, policies) ? "Approve & run" : "Approve";
+}
+
+/** One primary status per dimension, in plain money-movement language. */
+function approvalStatus(b: PayrollBatch): string {
+  if (b.status === "draft") return "draft";
+  if (b.status === "cancelled") return "cancelled";
+  if (b.status === "needs_approval") return "awaiting_approval";
+  return "approved"; // approved · processing · completed
+}
+function settlementStatus(b: PayrollBatch): string {
+  if (b.status === "completed") return "completed";
+  if (b.status === "cancelled") return "cancelled";
+  if (b.status === "processing") return hasFailed(b) ? "failed" : "processing";
+  return "not_started"; // draft · needs_approval · approved
+}
+
 export function Payroll() {
   const toast = useToast();
-  const { payrolls, counterparties, masked, refresh, loading } = useConsole();
+  const { payrolls, counterparties, policies, masked, refresh, loading } = useConsole();
   const name = useCounterpartyName();
   // Count recipients with no on-chain payout material on file - those lines can't
   // settle privately, so the approver sees it BEFORE an irreversible run, not after.
   const unpayableIds = (b: PayrollBatch) =>
     new Set(b.lines.filter((l) => !counterparties.find((c) => c.id === l.counterpartyId)?.paymentAddress?.shielded).map((l) => l.counterpartyId));
   const unpayableCount = (b: PayrollBatch) => unpayableIds(b).size;
-  const hasFailedLines = (b: PayrollBatch) => b.lines.some((l) => l.status === "failed");
   const visiblePayrolls = [...payrolls].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
   // Allowlisted contractors with a rate card = the roster a New run pulls from.
   const payableContractors = counterparties.filter((c) => c.type === "contractor" && c.payRate && c.status === "allowlisted");
 
   const [cap, setCap] = useState("5000.00");
   const [creating, setCreating] = useState(false);
+  // Detail drawer target (batch id) - opened by the row "Details" action and by the
+  // ceremony's "View register".
   const [open, setOpen] = useState<string | null>(null);
   // Confirm gate for the highest-value irreversible action (Approve & run).
   const [confirmRun, setConfirmRun] = useState<PayrollBatch | null>(null);
@@ -56,6 +114,7 @@ export function Payroll() {
   const [runOutcome, setRunOutcome] = useState<RunOutcome | null>(null);
   const ceremonyOpen = paymentState.phase !== "idle";
   const activeRefs = ceremonyBatch ? refs[ceremonyBatch.id] : undefined;
+  const drawerBatch = open ? visiblePayrolls.find((b) => b.id === open) ?? null : null;
 
   // One click = one approval step, but that approval automatically proves
   // funded + policy + computation + anonymous-approval and settles when it's the
@@ -161,7 +220,7 @@ export function Payroll() {
         source: "manual",
         lines: payableContractors.map((c) => ({ counterpartyId: c.id })),
       });
-      toast({ title: `${period()} run drafted · ${batch.lines.length} contractor${batch.lines.length === 1 ? "" : "s"} · ${fmtUsd(batch.total.amount)}`, tone: "success" });
+      toast({ title: `${monthYear(period())} run drafted · ${batch.lines.length} contractor${batch.lines.length === 1 ? "" : "s"} · ${fmtUsd(batch.total.amount)}`, tone: "success" });
       await refresh();
     } catch (e) {
       toast({ title: friendlyError(e), tone: "danger" });
@@ -170,14 +229,12 @@ export function Payroll() {
     }
   }
 
-  const approvedCount = (b: PayrollBatch) => (b.approvals ?? []).filter((a) => a.decision === "approved").length;
-
-  function download(name: string, text: string, type: string) {
+  function download(fileName: string, text: string, type: string) {
     const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = name;
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -208,7 +265,7 @@ export function Payroll() {
       <SendCeremony
         open={ceremonyOpen}
         state={paymentState}
-        eyebrow={ceremonyBatch ? `${ceremonyBatch.period} payroll run` : "Payroll run"}
+        eyebrow={ceremonyBatch ? `${monthYear(ceremonyBatch.period)} payroll run` : "Payroll run"}
         details={
           ceremonyBatch ? (
             <CeremonyRoster batch={ceremonyBatch} name={name} masked={masked} phase={paymentState.phase} unpayable={unpayableIds(ceremonyBatch)} />
@@ -264,172 +321,215 @@ export function Payroll() {
         }
       />
 
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl">Payroll</h1>
-          <p className="mt-1 text-[13.5px] text-muted">Salaries private on-chain · total provable to an auditor</p>
-        </div>
-        <Button onClick={createRun} loading={creating} disabled={payableContractors.length === 0} data-testid="new-run">
-          <Plus size={15} /> New run
-        </Button>
-      </div>
+      <PageHeader
+        title="Payroll"
+        subtitle="Salaries private on-chain · total provable to an auditor"
+        action={
+          <Button onClick={createRun} loading={creating} disabled={payableContractors.length === 0} data-testid="new-run">
+            <Plus size={15} /> New run
+          </Button>
+        }
+      />
 
       {loading ? (
-        <div className="space-y-4">
-          {[0, 1].map((i) => (
-            <Card key={i} className="p-5">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <Skeleton className="h-11 w-11 rounded-full" />
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-3 w-24" />
-                  </div>
-                </div>
-                <Skeleton className="h-7 w-24" />
-              </div>
-            </Card>
-          ))}
-        </div>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Period</Th>
+              <Th align="right">People</Th>
+              <Th align="right">Total</Th>
+              <Th>Approval</Th>
+              <Th>Settlement</Th>
+              <Th align="right">Actions</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {[0, 1, 2].map((i) => (
+              <Tr key={i}>
+                <Td><Skeleton className="h-4 w-32" /></Td>
+                <Td align="right"><Skeleton className="ml-auto h-4 w-6" /></Td>
+                <Td align="right"><Skeleton className="ml-auto h-4 w-20" /></Td>
+                <Td><Skeleton className="h-6 w-24" /></Td>
+                <Td><Skeleton className="h-6 w-20" /></Td>
+                <Td align="right"><Skeleton className="ml-auto h-8 w-28" /></Td>
+              </Tr>
+            ))}
+          </tbody>
+        </Table>
       ) : payrolls.length === 0 ? (
         <EmptyState
           title="No payroll runs yet"
           hint={payableContractors.length ? `New run pulls your ${payableContractors.length} allowlisted contractor${payableContractors.length === 1 ? "" : "s"} - amounts are computed from their rate cards.` : "Add allowlisted contractors with rate cards, then start a run here."}
         />
       ) : (
-        <Stagger className="space-y-4">
-          {visiblePayrolls.map((b, i) => {
-            const proofRefs = refs[b.id];
-            const runnable = b.status === "needs_approval" || b.status === "approved" || b.status === "processing";
-            return (
-              <Stagger.Item key={b.id} index={i}>
-                <Card className="p-5">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
-                        <Users size={20} />
-                      </div>
-                      <div>
-                        <div className="text-[15px] font-semibold">{b.period} payroll</div>
-                        <div className="text-[13px] text-muted">
-                          {b.lines.length} {b.lines.length === 1 ? "person" : "people"} · via {b.source}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <div className="font-display text-xl font-semibold text-fg" data-testid="payroll-total">{masked ? "••••" : fmtUsd(b.total.amount)}</div>
-                        <div className="mt-1 flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5">
-                          {/* Proof pills go green (shielded) ONLY when the proof actually verified on-chain. */}
-                          {b.fundedProof ? (
-                            <span className="inline-flex items-center gap-1" data-testid="funded-badge">
-                              <Pill tone={!b.fundedProof.funded ? "danger" : b.fundedProof.onChain ? "shielded" : "warning"}>
-                                <ShieldCheck size={11} /> {b.fundedProof.funded ? (b.fundedProof.onChain ? "Funded on-chain" : "Funding not verified on-chain") : "Over budget"}
-                              </Pill>
-                              {proofRefs?.funded ? <OnChainDetail refData={proofRefs.funded} label="" /> : null}
-                            </span>
-                          ) : null}
-                          {b.approvalProof ? (
-                            <span className="inline-flex items-center gap-1" data-testid="approval-badge">
-                              <Pill tone={!b.approvalProof.approved ? "danger" : b.approvalProof.onChain ? "shielded" : "warning"}>
-                                <ShieldCheck size={11} /> {b.approvalProof.approved ? `Approved ${b.approvalProof.approvers}-of-${b.approvalProof.memberCount} · anonymous${b.approvalProof.onChain ? "" : " · not verified on-chain"}` : "Not approved"}
-                              </Pill>
-                              {proofRefs?.approval ? <OnChainDetail refData={proofRefs.approval} label="" /> : null}
-                            </span>
-                          ) : null}
-                          {b.computationProof ? (
-                            <span className="inline-flex items-center gap-1" data-testid="computation-badge">
-                              <Pill tone={!b.computationProof.ok ? "danger" : b.computationProof.onChain ? "shielded" : "warning"}>
-                                <ShieldCheck size={11} /> {b.computationProof.ok ? (b.computationProof.onChain ? "Computed from rate card" : "Computation not verified on-chain") : "Computation unverified"}
-                              </Pill>
-                              {proofRefs?.computation ? <OnChainDetail refData={proofRefs.computation} label="" /> : null}
-                            </span>
-                          ) : null}
-                          {b.status === "needs_approval" && approvedCount(b) > 0 ? (
-                            <span className="text-[11px] font-semibold text-[#9a6b12]">{approvedCount(b)} approved · needs more</span>
-                          ) : null}
-                          {b.status === "processing" && hasFailedLines(b) ? (
-                            <Pill tone="danger">failed payouts</Pill>
-                          ) : (
-                            <StatusPill status={b.status} />
-                          )}
-                        </div>
-                      </div>
-                      {runnable ? (
-                        <Button onClick={() => setConfirmRun(b)} data-testid="run-payroll">
-                          <CheckCheck size={15} /> {b.status === "processing" ? "Retry failed" : "Approve & run"}
-                        </Button>
-                      ) : (
-                        <Button variant="ghost" onClick={() => setOpen(open === b.id ? null : b.id)}>
-                          {open === b.id ? "Hide" : "Details"}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                  {runnable ? (
-                    <div className="mt-4 flex items-center gap-2 border-t border-border pt-4 text-[12.5px] text-muted" data-testid="run-hint">
-                      <ShieldCheck size={14} className="flex-none text-primary" />
-                      <span>
-                        <span className="font-semibold text-fg">Approve &amp; run</span> proves funded, policy, computation and anonymous approval, then settles - all in one pass.
+        <>
+          <div className="mb-3 flex items-center gap-2 t-helper">
+            <ShieldCheck size={13} className="flex-none text-primary" />
+            Payroll runs after funding and approval checks pass.
+          </div>
+          <Table>
+            <thead>
+              <tr>
+                <Th>Period</Th>
+                <Th align="right">People</Th>
+                <Th align="right">Total</Th>
+                <Th>Approval</Th>
+                <Th>Settlement</Th>
+                <Th align="right">Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {visiblePayrolls.map((b) => {
+                const runnable = b.status === "needs_approval" || b.status === "approved" || b.status === "processing";
+                const partialApprovals = b.status === "needs_approval" && approvedCount(b) > 0;
+                return (
+                  <Tr key={b.id}>
+                    <Td>
+                      <div className="font-medium text-fg">{monthYear(b.period)} payroll</div>
+                      <div className="t-helper mt-0.5">via {b.source}</div>
+                    </Td>
+                    <Td align="right" className="tnum text-muted">{b.lines.length}</Td>
+                    <Td align="right">
+                      <span data-testid="payroll-total">
+                        {masked ? <span className="mask">••••</span> : <Amount minor={b.total.amount} tabular />}
                       </span>
-                      {b.status === "processing" && hasFailedLines(b) ? (
-                        <span className="ml-auto font-semibold text-danger" data-testid="payroll-failed-note">This run did not settle. Retry to re-attempt the failed lines.</span>
+                    </Td>
+                    <Td>
+                      <StatusPill status={approvalStatus(b)} />
+                      {partialApprovals ? (
+                        <div className="t-helper mt-1">{approvedCount(b)} of {requiredApprovers(b, policies)} signed</div>
                       ) : null}
-                    </div>
-                  ) : null}
-
-                  {open === b.id ? (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-4 overflow-hidden border-t border-border pt-3">
-                      <div className="mb-1.5 flex items-center justify-between">
-                        <span className="text-[12px] font-semibold uppercase tracking-[0.05em] text-muted">Run register</span>
-                        <div className="flex items-center gap-4">
-                          <button onClick={() => downloadPayslips(b)} className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline" data-testid="download-payslips">
-                            <Download size={13} /> Payslips
-                          </button>
-                          <button onClick={() => exportCsv(b)} className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline" data-testid="export-csv">
-                            <Download size={13} /> Export CSV
-                          </button>
-                        </div>
+                    </Td>
+                    <Td>
+                      <StatusPill status={settlementStatus(b)} />
+                    </Td>
+                    <Td align="right">
+                      <div className="flex items-center justify-end gap-2">
+                        {runnable ? (
+                          <Button size="sm" onClick={() => setConfirmRun(b)} data-testid="run-payroll">
+                            <CheckCheck size={14} /> {rowAction(b, policies)}
+                          </Button>
+                        ) : null}
+                        <Button size="sm" variant="outline" onClick={() => setOpen(b.id)} data-testid="open-details">
+                          Details
+                        </Button>
                       </div>
-                      {b.lines.map((l, li) => (
-                        <div key={li} className="flex items-center gap-3 py-2 text-[13.5px]">
-                          <span className="w-40 truncate">{name(l.counterpartyId)}</span>
-                          <span className="flex-1 text-[12px] text-danger">{l.status === "failed" && l.error ? l.error : ""}</span>
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </>
+      )}
+
+      {/* Per-run detail drawer: full register + downloads + the crypto/proof detail
+          folded behind a "Technical details" disclosure. */}
+      <Modal
+        open={!!drawerBatch}
+        onClose={() => setOpen(null)}
+        width="max-w-2xl"
+        title={
+          drawerBatch ? (
+            <span className="inline-flex items-center gap-2">
+              <Users size={15} className="text-primary" /> {monthYear(drawerBatch.period)} payroll
+            </span>
+          ) : (
+            "Payroll run"
+          )
+        }
+      >
+        {drawerBatch ? (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusPill status={approvalStatus(drawerBatch)} />
+                <StatusPill status={settlementStatus(drawerBatch)} />
+                {drawerBatch.status === "processing" && hasFailed(drawerBatch) ? (
+                  <span className="t-helper text-danger" data-testid="payroll-failed-note">Some payouts didn't settle - retry from the run row.</span>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-4">
+                <button onClick={() => downloadPayslips(drawerBatch)} className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline" data-testid="download-payslips" type="button">
+                  <Download size={13} /> Payslips
+                </button>
+                <button onClick={() => exportCsv(drawerBatch)} className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline" data-testid="export-csv" type="button">
+                  <Download size={13} /> Export CSV
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5">
+              <Fact label="Recipients" value={drawerBatch.lines.length} />
+              <Fact label="Total" value={masked ? <span className="mask">••••</span> : <Amount minor={drawerBatch.total.amount} />} />
+              <Fact label="Source" value={<span className="capitalize">{drawerBatch.source}</span>} />
+            </div>
+
+            <div>
+              <div className="t-label mb-2 text-muted">Run register</div>
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Recipient</Th>
+                    <Th>Policy</Th>
+                    <Th>Status</Th>
+                    <Th align="right">Amount</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {drawerBatch.lines.map((l, li) => (
+                    <Tr key={li}>
+                      <Td>
+                        <div className="text-fg">{name(l.counterpartyId)}</div>
+                        {l.status === "failed" && l.error ? <div className="t-helper text-danger">{l.error}</div> : null}
+                      </Td>
+                      <Td>
+                        <div className="flex flex-wrap gap-1.5">
                           {l.capProof ? (
-                            <Pill tone={!l.capProof.onChain ? "warning" : !l.capProof.withinCap ? "danger" : "shielded"}>
-                              <ShieldCheck size={10} /> {!l.capProof.onChain ? "cap not verified on-chain" : l.capProof.withinCap ? "within cap" : "over cap"}
+                            <Pill tone={!l.capProof.onChain ? "warning" : l.capProof.withinCap ? "shielded" : "danger"}>
+                              <ShieldCheck size={10} /> {!l.capProof.onChain ? "cap unverified" : l.capProof.withinCap ? "within cap" : "over cap"}
                             </Pill>
                           ) : null}
                           {l.screenProof ? (
-                            <Pill tone={!l.screenProof.onChain ? "warning" : !l.screenProof.innocent ? "danger" : "shielded"}>
-                              <ShieldCheck size={10} /> {!l.screenProof.onChain ? "screening not verified on-chain" : l.screenProof.innocent ? "not sanctioned" : "sanctioned"}
+                            <Pill tone={!l.screenProof.onChain ? "warning" : l.screenProof.innocent ? "shielded" : "danger"}>
+                              <ShieldCheck size={10} /> {!l.screenProof.onChain ? "screening unverified" : l.screenProof.innocent ? "not sanctioned" : "sanctioned"}
                             </Pill>
                           ) : null}
-                          {l.txHash ? (
-                            <a href={explorerTxUrl(l.txHash)} target="_blank" rel="noreferrer" className="text-[11px] font-medium text-primary hover:underline">receipt</a>
-                          ) : null}
-                          {l.status === "paid" && !l.onChain ? (
-                            <Pill tone="warning">not settled on-chain</Pill>
-                          ) : (
-                            <Pill tone={l.status === "paid" ? "success" : l.status === "failed" ? "danger" : "warning"}>{l.status}</Pill>
-                          )}
-                          <span className="font-display w-24 text-right font-semibold text-fg">{masked ? "••••" : fmtUsd(l.amount)}</span>
+                          {!l.capProof && !l.screenProof ? <span className="t-helper">—</span> : null}
                         </div>
-                      ))}
-                    </motion.div>
-                  ) : null}
-                </Card>
-              </Stagger.Item>
-            );
-          })}
-        </Stagger>
-      )}
+                      </Td>
+                      <Td>
+                        <div className="flex items-center gap-2">
+                          {l.status === "paid" && !l.onChain ? <Pill tone="warning">not on-chain</Pill> : <StatusPill status={l.status} />}
+                          {l.txHash ? (
+                            <a href={explorerTxUrl(l.txHash)} target="_blank" rel="noreferrer" className="text-[12px] font-semibold text-primary hover:underline">receipt</a>
+                          ) : null}
+                        </div>
+                      </Td>
+                      <Td align="right">{masked ? <span className="mask">••••</span> : <Amount minor={l.amount} tabular />}</Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+
+            <TechnicalDetails batch={drawerBatch} refs={refs[drawerBatch.id]} />
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         open={!!confirmRun}
         onClose={() => setConfirmRun(null)}
-        title={confirmRun?.status === "processing" ? "Retry failed payouts" : "Approve & run this payroll"}
+        title={
+          confirmRun
+            ? confirmRun.status === "processing"
+              ? "Retry failed payouts"
+              : settlesOnApprove(confirmRun, policies)
+                ? "Approve & run this payroll"
+                : "Approve this payroll run"
+            : ""
+        }
         footer={
           <>
             <Button variant="ghost" onClick={() => setConfirmRun(null)}>Cancel</Button>
@@ -442,7 +542,7 @@ export function Payroll() {
               }}
               data-testid="run-payroll-confirm"
             >
-              <CheckCheck size={15} /> {confirmRun?.status === "processing" ? "Retry failed" : "Approve & run"}
+              <CheckCheck size={15} /> {confirmRun ? rowAction(confirmRun, policies) : "Approve & run"}
             </Button>
           </>
         }
@@ -450,9 +550,15 @@ export function Payroll() {
         {confirmRun ? (
           <div className="space-y-3">
             <p className="text-sm text-muted">
-              This is your approval step for the <b>{confirmRun.period}</b> run. If it's the final required step, it proves funded, policy, computation and approval, then settles real on-chain payouts and <b>can't be undone</b>.
+              {confirmRun.status === "processing" ? (
+                <>Retry the payouts that didn't settle on the <b>{monthYear(confirmRun.period)}</b> run. Successful lines are not paid twice.</>
+              ) : settlesOnApprove(confirmRun, policies) ? (
+                <>This is your final approval for the <b>{monthYear(confirmRun.period)}</b> run. It proves funded, policy, computation and approval, then settles real on-chain payouts and <b>can't be undone</b>.</>
+              ) : (
+                <>This records your approval for the <b>{monthYear(confirmRun.period)}</b> run. It still needs {Math.max(1, requiredApprovers(confirmRun, policies) - approvedCount(confirmRun) - 1)} more approver{requiredApprovers(confirmRun, policies) - approvedCount(confirmRun) - 1 === 1 ? "" : "s"} before anything settles - <b>no payouts move yet</b>.</>
+              )}
             </p>
-            <div className="space-y-2 rounded-xl bg-canvas p-4 text-[14px]">
+            <div className="space-y-2 rounded-xl bg-bg p-4 text-[14px]">
               <div className="flex justify-between"><span className="text-muted">Recipients</span><span className="font-semibold">{confirmRun.lines.length}</span></div>
               <div className="flex justify-between"><span className="text-muted">Total</span><span className="font-display font-semibold">{masked ? "••••" : fmtUsd(confirmRun.total.amount)}</span></div>
               <div className="flex items-center justify-between gap-3">
@@ -463,7 +569,7 @@ export function Payroll() {
               </div>
             </div>
             {unpayableCount(confirmRun) > 0 ? (
-              <div className="rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-[12.5px] text-[#9a6b12]" data-testid="unpayable-warning">
+              <div className="rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-[12.5px] text-warning" data-testid="unpayable-warning">
                 {unpayableCount(confirmRun)} recipient{unpayableCount(confirmRun) === 1 ? "" : "s"} {unpayableCount(confirmRun) === 1 ? "has" : "have"} no payout handle on file - those lines won't settle on-chain until they're invited.
               </div>
             ) : null}
@@ -474,6 +580,104 @@ export function Payroll() {
         ) : null}
       </Modal>
     </Screen>
+  );
+}
+
+/** Small labelled value tile for the drawer summary. */
+function Fact({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-border bg-bg px-3 py-2">
+      <div className="t-label text-muted">{label}</div>
+      <div className="mt-0.5 text-[14px] font-medium text-fg">{value}</div>
+    </div>
+  );
+}
+
+/** Collapsible section - keeps the crypto/proof detail out of the calm default view. */
+function Disclosure({ title, children, testId }: { title: string; children: ReactNode; testId?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-border">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        data-testid={testId}
+        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      >
+        <span className="t-card-title text-fg">{title}</span>
+        <ChevronDown size={16} className={`flex-none text-muted transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease: EASE }} className="overflow-hidden">
+            <div className="border-t border-border px-4 py-3">{children}</div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/**
+ * "Technical details" disclosure - the three proof claims that used to crowd the
+ * run row, now folded away: Funding confirmed · Approval policy satisfied · Amounts
+ * calculated from rate cards. Each shows its verified-on-chain state and, when a
+ * proof was captured this session, an independent re-verify drill-down.
+ */
+function TechnicalDetails({ batch, refs }: { batch: PayrollBatch; refs?: RunRefs }) {
+  const { fundedProof: f, approvalProof: a, computationProof: c } = batch;
+  const any = f || a || c;
+  return (
+    <Disclosure title="Technical details" testId="technical-details">
+      {any ? (
+        <div className="space-y-3">
+          {f ? (
+            <TechRow
+              label="Funding confirmed"
+              hint="Treasury proven to cover the run total (ORGBAL) - the total itself stays hidden."
+              verified={!!f.funded && !!f.onChain}
+              refData={refs?.funded}
+            />
+          ) : null}
+          {a ? (
+            <TechRow
+              label="Approval policy satisfied"
+              hint={`${a.approvers}-of-${a.memberCount} distinct approvers signed anonymously (ORGAUTH) - which ones stays private.`}
+              verified={!!a.approved && !!a.onChain}
+              refData={refs?.approval}
+            />
+          ) : null}
+          {c ? (
+            <TechRow
+              label="Amounts calculated from rate cards"
+              hint="Per-line amounts derived from each private rate card (PAYCOMP) - the rate card is never revealed."
+              verified={!!c.ok && !!c.onChain}
+              refData={refs?.computation}
+            />
+          ) : null}
+        </div>
+      ) : (
+        <p className="t-secondary">Funding, approval-policy and computation proofs appear here once the run has been approved and settled on-chain.</p>
+      )}
+    </Disclosure>
+  );
+}
+
+function TechRow({ label, hint, verified, refData }: { label: string; hint: string; verified: boolean; refData?: OnChainRef }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5 text-[13.5px] font-medium text-fg">
+          <ShieldCheck size={13} className="flex-none text-primary" /> {label}
+        </div>
+        <div className="t-helper mt-0.5">{hint}</div>
+      </div>
+      <div className="flex flex-none items-center gap-2">
+        <Pill tone={verified ? "shielded" : "warning"}>{verified ? "verified on-chain" : "not verified"}</Pill>
+        {refData ? <OnChainDetail refData={refData} label="View" /> : null}
+      </div>
+    </div>
   );
 }
 
