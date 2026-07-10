@@ -34,7 +34,15 @@ const db = /* @__PURE__ */ createDemoDb();
 // ---- fake-chain helpers ---------------------------------------------------
 function randHex(len: number): string {
   const bytes = new Uint8Array(Math.ceil(len / 2));
-  (globalThis.crypto ?? { getRandomValues: (a: Uint8Array) => a.map(() => (Math.random() * 256) | 0) }).getRandomValues(bytes);
+  // Fallback must fill `bytes` IN PLACE — `.map()` returns a fresh array that
+  // would be discarded, leaving `bytes` all-zeros (identical output every call).
+  const rng = globalThis.crypto ?? {
+    getRandomValues: (a: Uint8Array) => {
+      for (let i = 0; i < a.length; i++) a[i] = (Math.random() * 256) | 0;
+      return a;
+    },
+  };
+  rng.getRandomValues(bytes);
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, len);
 }
 const fakeTx = () => `0x${randHex(64)}`;
