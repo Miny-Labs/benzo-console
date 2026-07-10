@@ -22,6 +22,10 @@ type Filter = "all" | "active" | "review";
 
 const statuses: Counterparty["status"][] = ["draft", "invited", "pending_screening", "allowlisted", "blocked"];
 
+/** RFC 4180 CSV field: quote when it contains a comma / quote / newline, so a name
+ *  like "Smith, Jr." can't shift columns (or inject rows) through the roster import. */
+const csvField = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+
 export function Contractors() {
   const toast = useToast();
   const { counterparties, loading, refresh } = useConsole();
@@ -99,7 +103,7 @@ export function Contractors() {
     setAddError(null);
     setBusy("add");
     try {
-      const r = await api.importRoster(`${name},${handle},${rate}`);
+      const r = await api.importRoster(`${csvField(name)},${csvField(handle)},${csvField(rate)}`);
       if (r.errors.length) {
         setAddError(r.errors[0]?.error ?? "Check the name and monthly rate.");
         toast({ title: "Couldn't add contractor", tone: "danger" });
@@ -116,6 +120,14 @@ export function Contractors() {
     }
   }
 
+  // Close the add modal AND clear its form — both the ✕ and Cancel use this so a
+  // half-filled, cancelled form never reappears on reopen.
+  function closeAdd() {
+    setAddOpen(false);
+    setAddError(null);
+    setAdd({ name: "", handle: "", rate: "" });
+  }
+
   function flash(id: string) {
     setSavedFlash(id);
     setTimeout(() => setSavedFlash((x) => (x === id ? null : x)), 900);
@@ -124,9 +136,21 @@ export function Contractors() {
   async function saveRate(c: Counterparty) {
     const human = rateEdits[c.id];
     if (human === undefined) return;
+    const t = human.trim();
+    // An empty / non-positive rate must never silently zero a contractor's pay
+    // (e.g. an accidental blur of a cleared field): discard the edit and revert
+    // to the stored rate.
+    if (!t || !(Number(t) > 0)) {
+      setRateEdits((m) => {
+        const n = { ...m };
+        delete n[c.id];
+        return n;
+      });
+      return;
+    }
     setBusy(c.id);
     try {
-      await api.updateCounterparty(c.id, { payRate: usdcToMinor(human) });
+      await api.updateCounterparty(c.id, { payRate: usdcToMinor(t) });
       toast({ title: `Rate updated for ${c.name}`, tone: "success" });
       flash(c.id);
       setRateEdits((m) => {
@@ -197,7 +221,7 @@ export function Contractors() {
 
       <Stagger className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stagger.Item index={0}>
-          <Stat label="Active contractors" value={active.length} hint="Allowlisted & payable" />
+          <Stat label="Active contractors" value={active.length} hint="Allowlisted" />
         </Stagger.Item>
         <Stagger.Item index={1}>
           <Stat label="In review" value={inReview.length} hint="Awaiting screening" />
@@ -429,20 +453,11 @@ export function Contractors() {
       {/* Add contractor */}
       <Modal
         open={addOpen}
-        onClose={() => {
-          setAddError(null);
-          setAddOpen(false);
-        }}
+        onClose={closeAdd}
         title="Add contractor"
         footer={
           <>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setAddError(null);
-                setAddOpen(false);
-              }}
-            >
+            <Button variant="ghost" onClick={closeAdd}>
               Cancel
             </Button>
             <Button loading={busy === "add"} onClick={doAdd} disabled={!add.name.trim() || !add.rate.trim()} data-testid="add-submit">
