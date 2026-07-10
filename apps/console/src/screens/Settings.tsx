@@ -345,6 +345,9 @@ function ApprovalPolicyCard() {
   }, [sig]);
 
   const dirty = !!policy && (amount !== savedAmount || n !== savedN);
+  // A blank field would otherwise save as $0 — i.e. require approval on EVERY
+  // payment — silently. Require an explicit non-negative number to save.
+  const amountValid = amount.trim() !== "" && Number.isFinite(Number(amount)) && Number(amount) >= 0;
 
   async function save() {
     if (!policy) return;
@@ -401,7 +404,7 @@ function ApprovalPolicyCard() {
             </span>
           </div>
           <div className="flex justify-end border-t border-border px-5 py-3">
-            <Button onClick={save} loading={busy} disabled={!dirty} data-testid="approval-policy-save">
+            <Button onClick={save} loading={busy} disabled={!dirty || !amountValid} data-testid="approval-policy-save">
               <Check size={14} /> Save policy
             </Button>
           </div>
