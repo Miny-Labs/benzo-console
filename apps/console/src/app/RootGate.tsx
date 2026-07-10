@@ -10,11 +10,14 @@ import { Shell } from "./Shell";
 import { Onboarding } from "./Onboarding";
 import { DesktopOnly, useIsDesktop } from "./DesktopOnly";
 import { useConsole } from "../lib/store";
+import { DEMO_MODE } from "../demo/flag";
 
 export function RootGate() {
   const { refresh } = useConsole();
   const isDesktop = useIsDesktop();
-  const [onboarded, setOnboarded] = useState(() => localStorage.getItem("benzo.console.onboarded") === "1");
+  // Demo mode skips SIWE onboarding entirely and boots into the Shell (the
+  // desktop-only gate below still applies — this stays a desktop product).
+  const [onboarded, setOnboarded] = useState(() => DEMO_MODE || localStorage.getItem("benzo.console.onboarded") === "1");
   function finish() {
     localStorage.setItem("benzo.console.onboarded", "1");
     setOnboarded(true);
