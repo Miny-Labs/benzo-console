@@ -156,7 +156,7 @@ export function Pay() {
                 {payee?.paymentAddress?.shielded ? (
                   <Row k="Recipient" v={<span className="font-mono text-[12px]">{formatAddress(payee.paymentAddress.shielded, 6, 6)}</span>} />
                 ) : null}
-                <Row k="Amount" v={<span className="font-display tnum">{fmtUsd(usdcToMinor(amount))}</span>} />
+                <Row k="Amount" v={<span className="font-display">{fmtUsd(usdcToMinor(amount))}</span>} />
                 {memo ? <Row k="Note" v={memo} /> : null}
                 <Row k="Fee" v={<span className="font-semibold text-success">Free</span>} />
                 <Row k="Arrives" v="In seconds" />

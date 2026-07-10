@@ -174,7 +174,7 @@ export function Invoices() {
                     {statusMeta(inv.status).eta ? ` · ${statusMeta(inv.status).eta}` : ""}
                   </div>
                 </div>
-                <div className="font-display tnum flex-none text-lg font-semibold text-fg">{masked ? "••••" : fmtUsd(inv.total.amount)}</div>
+                <div className="font-display flex-none text-lg font-semibold text-fg">{masked ? "••••" : fmtUsd(inv.total.amount)}</div>
                 <span title={statusMeta(inv.status).tooltip}><StatusPill status={inv.status} /></span>
                 <Button loading={busy === inv.id} onClick={() => setConfirmPay(inv)} data-testid="pay-invoice">
                   <Send size={15} /> Pay
@@ -193,7 +193,7 @@ export function Invoices() {
               <div key={inv.id} className="flex items-center gap-3 px-5 py-3 text-[13.5px]">
                 <span className="flex-1 truncate">{inv.number} · {name(inv.counterpartyId)}</span>
                 <StatusPill status={inv.status} />
-                <span className="font-display tnum w-24 text-right font-semibold text-fg">{masked ? "••••" : fmtUsd(inv.total.amount)}</span>
+                <span className="font-display w-24 text-right font-semibold text-fg">{masked ? "••••" : fmtUsd(inv.total.amount)}</span>
               </div>
             ))}
           </Card>
@@ -208,7 +208,7 @@ export function Invoices() {
               <p className="mt-1 text-sm text-muted">{open.length} invoices through the same maker-checker + confidential settlement. Over-threshold ones route to Approvals.</p>
               <div className="mt-4 space-y-2 rounded-xl bg-canvas p-4 text-[14px]">
                 <div className="flex justify-between"><span className="text-muted">Invoices</span><span className="font-semibold">{open.length}</span></div>
-                <div className="flex justify-between"><span className="text-muted">Total</span><span className="font-display tnum font-semibold">{masked ? "••••" : fmtUsd(openTotal)}</span></div>
+                <div className="flex justify-between"><span className="text-muted">Total</span><span className="font-display font-semibold">{masked ? "••••" : fmtUsd(openTotal)}</span></div>
                 <div className="flex justify-between"><span className="text-muted">Fee</span><span className="font-semibold text-success">Free</span></div>
                 <div className="flex justify-between"><span className="text-muted">Arrives</span><span className="font-semibold">In seconds</span></div>
               </div>
@@ -231,7 +231,7 @@ export function Invoices() {
               <div className="mt-4 space-y-2 rounded-xl bg-canvas p-4 text-[14px]">
                 <div className="flex justify-between"><span className="text-muted">Invoice</span><span className="font-semibold">{confirmPay.number}</span></div>
                 <div className="flex justify-between"><span className="text-muted">To</span><span className="font-semibold">{name(confirmPay.counterpartyId)}</span></div>
-                <div className="flex justify-between"><span className="text-muted">Total</span><span className="font-display tnum font-semibold">{masked ? "••••" : fmtUsd(confirmPay.total.amount)}</span></div>
+                <div className="flex justify-between"><span className="text-muted">Total</span><span className="font-display font-semibold">{masked ? "••••" : fmtUsd(confirmPay.total.amount)}</span></div>
                 <div className="flex justify-between"><span className="text-muted">Fee</span><span className="font-semibold text-success">Free</span></div>
               </div>
               <div className="mt-3 flex items-center gap-1.5 text-sm text-muted"><ShieldCheck size={13} className="text-primary" /> The amount and recipient never go on-chain in the clear.</div>

@@ -118,7 +118,7 @@ export function Approvals() {
                     ) : null}
                   </div>
                   <div className="flex flex-col items-end gap-3">
-                    <div className="font-display tnum text-2xl font-semibold text-fg" data-testid="approval-amount">
+                    <div className="font-display text-2xl font-semibold text-fg" data-testid="approval-amount">
                       {masked || p.privacy.amountHidden ? "••••" : fmtUsd(p.amount.amount)}
                     </div>
                     <div className="flex gap-2">
@@ -151,7 +151,7 @@ export function Approvals() {
                     Receipt <ExternalLink size={12} />
                   </a>
                 ) : null}
-                <span className="font-display tnum w-20 text-right font-semibold text-fg">{masked || p.privacy.amountHidden ? "••••" : fmtUsd(p.amount.amount)}</span>
+                <span className="font-display w-20 text-right font-semibold text-fg">{masked || p.privacy.amountHidden ? "••••" : fmtUsd(p.amount.amount)}</span>
               </div>
             ))}
           </Card>

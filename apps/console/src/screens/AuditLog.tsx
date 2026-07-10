@@ -237,7 +237,7 @@ export function AuditLog() {
                     ) : null}
                   </div>
                 </div>
-                <div className="font-display tnum flex-none text-right text-[15px] text-fg">{fmtUsd(entryGross(e))}</div>
+                <div className="font-display flex-none text-right text-[15px] text-fg">{fmtUsd(entryGross(e))}</div>
               </Card>
             </Stagger.Item>
           ))}

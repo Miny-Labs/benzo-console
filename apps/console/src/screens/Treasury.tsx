@@ -301,7 +301,7 @@ export function Treasury() {
           {loading ? (
             <Skeleton className="mt-2 h-10 w-56" />
           ) : (
-            <div className="font-display tnum mt-2 text-[40px] leading-none" data-testid="treasury-total">
+            <div className="font-display mt-2 text-[40px] leading-none" data-testid="treasury-total">
               {masked ? "••••••" : fmtUsd(treasury?.totalHidden.amount ?? "0")}
             </div>
           )}
@@ -319,7 +319,7 @@ export function Treasury() {
           {pubLoading && !pub ? (
             <Skeleton className="mt-2 h-10 w-56" />
           ) : (
-            <div className="font-display tnum mt-2 text-[40px] leading-none text-[#2c3744]" data-testid="public-balance">
+            <div className="font-display mt-2 text-[40px] leading-none text-[#2c3744]" data-testid="public-balance">
               {masked ? "••••••" : publicUsd}
             </div>
           )}
@@ -390,7 +390,7 @@ export function Treasury() {
                       <div className="truncate text-[14.5px] font-semibold">{a.account.name}</div>
                       <div className="truncate text-[12.5px] capitalize text-muted">{a.account.type} · {a.account.assetCode}</div>
                     </div>
-                    <div className="font-display tnum flex-none text-lg text-[#2c3744]">
+                    <div className="font-display flex-none text-lg text-[#2c3744]">
                       {a.balance ? (masked ? "••••" : fmtUsd(a.balance.amount)) : <span className="mask">private</span>}
                     </div>
                   </Card>
@@ -486,7 +486,7 @@ export function Treasury() {
             Proof location: local. The Console prover creates the shield proof in the Benzo runtime before the on-chain settlement is accepted.
           </p>
           <div className="space-y-2 rounded-xl bg-canvas p-4 text-[14px]">
-            <div className="flex justify-between"><span className="text-muted">Amount</span><span className="font-display tnum font-semibold">{fmtUsd(usdcToMinor(fundAmt))}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Amount</span><span className="font-display font-semibold">{fmtUsd(usdcToMinor(fundAmt))}</span></div>
             <div className="flex justify-between"><span className="text-muted">From</span><span className="font-semibold">Public</span></div>
             <div className="flex justify-between"><span className="text-muted">Into</span><span className="font-semibold">Private (M-of-N note)</span></div>
             <div className="flex justify-between"><span className="text-muted">Proof location</span><span className="font-semibold">Local</span></div>

@@ -318,7 +318,7 @@ export function Payroll() {
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <div className="font-display tnum text-xl font-semibold text-fg" data-testid="payroll-total">{masked ? "••••" : fmtUsd(b.total.amount)}</div>
+                        <div className="font-display text-xl font-semibold text-fg" data-testid="payroll-total">{masked ? "••••" : fmtUsd(b.total.amount)}</div>
                         <div className="mt-1 flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5">
                           {/* Proof pills go green (shielded) ONLY when the proof actually verified on-chain. */}
                           {b.fundedProof ? (
@@ -414,7 +414,7 @@ export function Payroll() {
                           ) : (
                             <Pill tone={l.status === "paid" ? "success" : l.status === "failed" ? "danger" : "warning"}>{l.status}</Pill>
                           )}
-                          <span className="font-display tnum w-24 text-right font-semibold text-fg">{masked ? "••••" : fmtUsd(l.amount)}</span>
+                          <span className="font-display w-24 text-right font-semibold text-fg">{masked ? "••••" : fmtUsd(l.amount)}</span>
                         </div>
                       ))}
                     </motion.div>
@@ -454,7 +454,7 @@ export function Payroll() {
             </p>
             <div className="space-y-2 rounded-xl bg-canvas p-4 text-[14px]">
               <div className="flex justify-between"><span className="text-muted">Recipients</span><span className="font-semibold">{confirmRun.lines.length}</span></div>
-              <div className="flex justify-between"><span className="text-muted">Total</span><span className="font-display tnum font-semibold">{masked ? "••••" : fmtUsd(confirmRun.total.amount)}</span></div>
+              <div className="flex justify-between"><span className="text-muted">Total</span><span className="font-display font-semibold">{masked ? "••••" : fmtUsd(confirmRun.total.amount)}</span></div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-muted">Per-payout cap</span>
                 <div className="w-28">
@@ -508,7 +508,7 @@ function CeremonyRoster({
     <div>
       <div className="mb-2 flex items-center justify-between text-[12px] font-semibold uppercase tracking-[0.06em] text-white/50">
         <span>Recipients</span>
-        <span className="tnum text-white/70">{settled ? `${doneCount}/${lines.length} paid` : `${proven}/${lines.length} sealed`}</span>
+        <span className="text-white/70">{settled ? `${doneCount}/${lines.length} paid` : `${proven}/${lines.length} sealed`}</span>
       </div>
       <p className="mb-2.5 text-[12px] normal-case text-white/48">
         {settled ? "Salaries settled privately - amounts stay hidden on-chain." : failedPhase ? "The run stopped before every line settled." : "Proving each salary private, then funded · policy · computation on-chain."}
@@ -576,7 +576,7 @@ function RosterRow({
       <span className={`flex-none text-[11.5px] ${mode === "failed" ? "text-danger" : mode === "skip" ? "text-warning" : "text-white/45"}`}>
         {mode === "paid" ? "paid" : mode === "failed" ? "failed" : mode === "skip" ? "no handle" : mode === "proven" ? "sealed" : "proving"}
       </span>
-      <span className="font-display tnum flex-none text-white/80">{masked ? "••••" : fmtUsd(line.amount)}</span>
+      <span className="font-display flex-none text-white/80">{masked ? "••••" : fmtUsd(line.amount)}</span>
     </div>
   );
 }

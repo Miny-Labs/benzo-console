@@ -155,7 +155,7 @@ export function Dashboard() {
             {loading ? (
               <Skeleton className="mt-2 h-10 w-48" />
             ) : (
-              <div className="font-display tnum mt-2 text-[40px] leading-none" data-testid="treasury-total">
+              <div className="font-display mt-2 text-[40px] leading-none" data-testid="treasury-total">
                 {masked ? "••••••" : fmtUsd(String(Math.round(animatedTotal * USDC_SCALE)))}
               </div>
             )}
@@ -166,13 +166,13 @@ export function Dashboard() {
         <Stagger.Item index={1} className="h-full">
           <Card className="flex h-full flex-col p-5">
             <div className="text-[12.5px] font-medium text-muted">Pending your approval</div>
-            <div className="font-display tnum mt-1 text-[34px] leading-none" data-testid="pending-count">{pending.length}</div>
+            <div className="font-display mt-1 text-[34px] leading-none" data-testid="pending-count">{pending.length}</div>
             <div className="mt-2 flex-1">
               {pending.slice(0, 2).map((p) => (
                 <div key={p.id} className="flex items-center gap-2.5 border-b border-border py-2.5 text-[13.5px] last:border-0">
                   {p.type === "payroll_payout" ? <Users size={15} className="text-[#8a9099]" /> : <Building2 size={15} className="text-[#8a9099]" />}
                   <span className="flex-1 truncate">{p.memo ?? "Payment"}</span>
-                  <span className="font-display tnum font-semibold text-fg">{masked || p.privacy.amountHidden ? "••••" : fmtUsd(p.amount.amount)}</span>
+                  <span className="font-display font-semibold text-fg">{masked || p.privacy.amountHidden ? "••••" : fmtUsd(p.amount.amount)}</span>
                 </div>
               ))}
               {pending.length === 0 ? <div className="py-4 text-sm text-muted">Nothing waiting on you.</div> : null}
@@ -227,7 +227,7 @@ export function Dashboard() {
                               {unverifiedActivityIds.has(a.id) ? <Pill tone="warning">Unverified</Pill> : null}
                             </span>
                           </td>
-                          <td className="border-t border-border px-5 py-3 text-right font-display tnum">
+                          <td className="border-t border-border px-5 py-3 text-right font-display">
                             {isPrivate ? <span className="mask">••••••</span> : <span className="inline-flex items-center gap-1.5 font-semibold text-fg">{a.amountLabel} <ShieldedBadge /></span>}
                           </td>
                         </tr>

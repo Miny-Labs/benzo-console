@@ -23,7 +23,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { StageVideo } from "../ui/StageVideo";
 import { CommandBar } from "./CommandBar";
-import { Logo } from "../ui/Logo";
+import { AvalancheMark, Logo } from "../ui/Logo";
 import { useConsole } from "../lib/store";
 import { NETWORK_LABEL } from "../lib/network";
 import { Dashboard } from "../screens/Dashboard";
@@ -154,7 +154,7 @@ export function Shell() {
               data-testid="live-badge"
               title={live ? `Payments settle on ${NETWORK_LABEL}` : "Live chain connection unavailable"}
             >
-              <span className={`h-[7px] w-[7px] rounded-full ${live ? "bg-success" : "bg-warning"}`} />
+              <AvalancheMark size={13} className="flex-none" />
               {live ? `Live · ${NETWORK_LABEL}` : "Chain unavailable"}
             </span>
             <button onClick={toggleMasked} aria-label="Toggle amount masking" data-testid="mask-toggle" className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[9px] border border-border text-[#6b6f74] outline-none transition hover:bg-[#f4f3ef] focus-visible:ring-2 focus-visible:ring-primary/40 active:scale-95">
@@ -221,6 +221,9 @@ export function Shell() {
             <NavItem to="/audit" icon={ScrollText} label="Audit log" />
             <div className="flex-1" />
             <NavItem to="/settings" icon={Settings} label="Settings & team" />
+            <div className="mt-auto flex items-center justify-center gap-1.5 border-t border-border/60 pt-3 text-[11px] font-medium text-[#8a9099]" data-testid="built-on-avalanche">
+              <AvalancheMark size={13} /> Built on Avalanche
+            </div>
           </aside>
 
           <div className="relative flex flex-1 flex-col overflow-hidden">
