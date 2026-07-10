@@ -47,7 +47,21 @@ describe("Dashboard", () => {
     expect(screen.queryByText("$123.00")).not.toBeInTheDocument();
   });
 
-  it("offers first-run routes for treasury, team invites, approval policy, contractors, and payroll", () => {
+  it("collapses setup into a compact banner: one remaining step, its CTA, and a completed-steps disclosure", () => {
+    // Everything is done except the approval policy → "1 step remaining".
+    stateRef.current = {
+      ...stateRef.current,
+      treasury: { totalHidden: { amount: "1230000000", assetCode: "USDC" } },
+      members: [
+        { id: "m_owner", role: "owner", status: "active" },
+        { id: "m_approver", role: "approver", status: "active" },
+      ],
+      counterparties: [{ id: "cp1", type: "contractor" }],
+      payrolls: [{ id: "pr1" }],
+      policies: [],
+      masked: false,
+    };
+
     function PathProbe() {
       return <span data-testid="path">{useLocation().pathname}</span>;
     }
@@ -61,16 +75,19 @@ describe("Dashboard", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByTestId("firstrun-fund"));
-    expect(screen.getByTestId("path")).toHaveTextContent("/treasury");
-    // Team invites + the approval-policy control both live on Settings now.
-    fireEvent.click(screen.getByTestId("firstrun-approver"));
-    expect(screen.getByTestId("path")).toHaveTextContent("/settings");
+    const banner = screen.getByTestId("firstrun-checklist");
+    // Copy is data-driven: exactly one step (the approval policy) is left.
+    expect(banner).toHaveTextContent("1 step remaining");
+    expect(banner).toHaveTextContent("Review and activate your approval policy");
+
+    // The single primary CTA routes to the approval policy on Settings.
     fireEvent.click(screen.getByTestId("firstrun-policy"));
     expect(screen.getByTestId("path")).toHaveTextContent("/settings");
-    fireEvent.click(screen.getByTestId("firstrun-contractors"));
-    expect(screen.getByTestId("path")).toHaveTextContent("/contractors");
-    fireEvent.click(screen.getByTestId("firstrun-payroll"));
-    expect(screen.getByTestId("path")).toHaveTextContent("/payroll");
+
+    // The four finished steps are disclosed (not struck through) as "Completed".
+    expect(banner).toHaveTextContent("Show completed steps (4)");
+    fireEvent.click(screen.getByTestId("firstrun-toggle-done"));
+    expect(screen.getByTestId("firstrun-done-fund")).toHaveTextContent("Fund your treasury");
+    expect(screen.getByTestId("firstrun-done-fund")).toHaveTextContent("Completed");
   });
 });

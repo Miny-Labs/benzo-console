@@ -1,17 +1,21 @@
 /**
- * Dashboard / Overview - the treasury metric (Provable chip + animated sparkline),
- * a "pending your approval" card, and a recent-activity table with amounts masked
- * by default (private by design). Everything settles on Avalanche/eERC.
+ * Dashboard / Overview — calm, dense enterprise-finance home. A compact setup
+ * banner (only when setup is unfinished), the private treasury balance, the one
+ * approval awaiting the current member, and a real recent-activity table. Amounts
+ * follow one rule: •••••• only when the viewer can't see the figure, — when there
+ * is no amount, and a "Private on-chain" tag for money that's visible in Benzo but
+ * hidden publicly. Everything settles on Avalanche/eERC.
  */
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Building2, Check, RefreshCw, ShieldCheck, UserPlus, Users, Wallet, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, EyeOff, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useReducedMotion } from "framer-motion";
+import type { ActivityItem } from "@benzo/types";
 import { useConsole } from "../lib/store";
-import { USDC_SCALE, fmtUsd, formatDate } from "../lib/format";
-import { NETWORK_LABEL } from "../lib/network";
+import { USDC_SCALE, fmtDateTime, formatMoney } from "../lib/format";
+import { PRIVACY } from "../lib/copy";
 import { Screen, Stagger } from "../ui/motion";
-import { Button, Card, Pill, ShieldedBadge, StatusPill, Skeleton } from "../ui/primitives";
+import { Amount, Button, Card, PageHeader, Pill, Skeleton, StatusPill, Table, Td, Th } from "../ui/primitives";
 
 /** Count a dollar figure up to its target on load (ease-out-cubic; skipped under reduced-motion). */
 function useCountUp(target: number, durationMs = 1000): number {
@@ -26,7 +30,7 @@ function useCountUp(target: number, durationMs = 1000): number {
     const start = performance.now();
     const tick = (t: number) => {
       const p = Math.min(1, (t - start) / durationMs);
-      setValue(target * (1 - Math.pow(1 - p, 3)));
+      setValue(target * (1 - (1 - p) ** 3));
       if (p < 1) raf.current = requestAnimationFrame(tick);
     };
     raf.current = requestAnimationFrame(tick);
@@ -35,25 +39,42 @@ function useCountUp(target: number, durationMs = 1000): number {
   return value;
 }
 
+/** "2026-07-08T14:10:00Z" -> "2 hours ago" — a calm relative age for submitted-at. */
+function timeAgo(ts: string | number | Date): string {
+  const then = new Date(ts).getTime();
+  if (Number.isNaN(then)) return "";
+  const diff = Math.max(0, Date.now() - then);
+  const min = Math.round(diff / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
+  // Derive each unit from `diff` directly — deriving hr from the already-rounded
+  // min (etc.) compounds rounding and overstates age at boundaries.
+  const hr = Math.round(diff / 3_600_000);
+  if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+  const day = Math.round(diff / 86_400_000);
+  if (day < 30) return `${day} day${day === 1 ? "" : "s"} ago`;
+  const mo = Math.round(diff / 2_592_000_000);
+  return `${mo} month${mo === 1 ? "" : "s"} ago`;
+}
+
 /**
- * First-run checklist - the bridge from onboarding to first value. Onboarding sets
- * provisions the org treasury but the workspace is one un-met prerequisite away from
- * a first payout: it needs funds and a distinct approver (maker-checker blocks the
- * first payout otherwise). Rather than letting the user discover that via an error,
- * we surface a guided checklist from REAL store state - each item flips to
- * done on its own when the underlying condition is met. It auto-hides once all
- * are complete, and the user can dismiss it (persisted) at any time.
+ * Setup banner — the bridge from onboarding to first value, collapsed into ONE calm
+ * line: "Finish setup — N steps remaining" + the next action's prompt + its CTA.
+ * Steps are seeded from REAL store state (not a stored "seen" flag), so each flips to
+ * done on its own when the underlying condition is met. Completed steps are disclosed
+ * under a small toggle — a muted check + "Completed", never struck through. It
+ * auto-hides once everything's done and can be dismissed (persisted).
  */
-function FirstRunChecklist() {
+function SetupBanner() {
   const nav = useNavigate();
   const { treasury, members, policies, counterparties, payrolls, loading } = useConsole();
   const [dismissed, setDismissed] = useState(() => localStorage.getItem("benzo.console.firstrun.dismissed") === "1");
+  const [showDone, setShowDone] = useState(false);
 
-  // Seed each item from live state - honest, not a stored "seen" flag.
+  // Seed each item from live state — honest, not a stored flag.
   const funded = Number(treasury?.totalHidden.amount ?? "0") > 0;
-  // Maker-checker needs a proposer ≠ approver, so "invited an approver" means there's
-  // someone other than just the owner who can approve a payout: more than one member,
-  // at least one of whom holds an approve-capable role.
+  // Maker-checker needs a proposer ≠ approver: more than one member, at least one of
+  // whom can approve.
   const canApprove = (r: string) => r === "approver" || r === "admin" || r === "owner";
   const hasApprover = members.length > 1 && members.some((m) => m.status !== "suspended" && canApprove(m.role));
   const hasPolicy = policies.length > 0;
@@ -61,17 +82,19 @@ function FirstRunChecklist() {
   const ranPayroll = payrolls.length > 0;
 
   const items = [
-    { key: "fund", done: funded, icon: Wallet, title: "Fund your treasury", hint: "Add USDC so you can run your first payout.", to: "/treasury", cta: "Fund treasury", doneCta: "Open" },
-    { key: "approver", done: hasApprover, icon: UserPlus, title: "Invite an approver", hint: "Maker-checker needs a proposer ≠ approver before any payout.", to: "/settings", cta: "Invite", doneCta: "Manage" },
-    { key: "policy", done: hasPolicy, icon: ShieldCheck, title: "Review approval policy", hint: "Confirm who can approve, release, and re-approve private payouts.", to: "/settings", cta: "Review policy", doneCta: "Review" },
-    { key: "contractors", done: hasContractor, icon: Users, title: "Add contractors", hint: "Import or invite the people you want to pay privately.", to: "/contractors", cta: "Add contractors", doneCta: "Open" },
-    { key: "payroll", done: ranPayroll, icon: Users, title: "Run your first payroll", hint: "Pay your contractors privately - amounts stay confidential.", to: "/payroll", cta: "Start payroll", doneCta: "Open" },
+    { key: "fund", done: funded, title: "Fund your treasury", prompt: "Add USDC so you can run your first payout", cta: "Fund treasury", to: "/treasury" },
+    { key: "approver", done: hasApprover, title: "Invite an approver", prompt: "Invite an approver so maker-checker can clear payouts", cta: "Invite approver", to: "/settings" },
+    { key: "policy", done: hasPolicy, title: "Review approval policy", prompt: "Review and activate your approval policy", cta: "Review policy", to: "/settings" },
+    { key: "contractors", done: hasContractor, title: "Add contractors", prompt: "Add the people you want to pay privately", cta: "Add contractors", to: "/contractors" },
+    { key: "payroll", done: ranPayroll, title: "Run your first payroll", prompt: "Run your first private payroll", cta: "Start payroll", to: "/payroll" },
   ] as const;
 
-  const completed = items.filter((i) => i.done).length;
+  const done = items.filter((i) => i.done);
+  const remaining = items.filter((i) => !i.done);
   // Hide while the first load is in flight (avoid a flash of all-incomplete), once
   // everything's done, or once the user dismisses it.
-  if (dismissed || loading || completed === items.length) return null;
+  if (dismissed || loading || remaining.length === 0) return null;
+  const next = remaining[0];
 
   function dismiss() {
     localStorage.setItem("benzo.console.firstrun.dismissed", "1");
@@ -79,63 +102,143 @@ function FirstRunChecklist() {
   }
 
   return (
-    <Card className="mb-5 p-5" data-testid="firstrun-checklist">
+    <Card className="mb-6" data-testid="firstrun-checklist">
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="font-display text-[15px]">Finish setting up</div>
-          <div className="mt-0.5 text-[12.5px] text-muted">{completed} of {items.length} done · a couple of steps to your first private payout</div>
-        </div>
-        <button onClick={dismiss} aria-label="Dismiss setup checklist" data-testid="firstrun-dismiss" className="flex-none rounded-md p-1 text-[#a3a7ac] outline-none transition hover:bg-[#f4f3ef] hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40">
-          <X size={16} />
-        </button>
-      </div>
-      <div className="mt-4 space-y-2">
-        {items.map((it) => (
-          <div key={it.key} className="flex items-center gap-3 rounded-xl border border-border px-3.5 py-2.5">
-            <span className={`flex h-7 w-7 flex-none items-center justify-center rounded-full ${it.done ? "bg-success/15 text-[#1d7a52]" : "bg-primary/10 text-primary"}`}>
-              {it.done ? <Check size={15} /> : <it.icon size={15} />}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className={`text-[13.5px] font-semibold ${it.done ? "text-muted line-through" : "text-ink"}`}>{it.title}</div>
-              {!it.done ? <div className="text-[12px] text-muted">{it.hint}</div> : null}
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-primary/10 text-primary">
+            <ShieldCheck size={16} />
+          </span>
+          <div className="min-w-0">
+            <div className="t-card-title text-fg">
+              Finish setup — {remaining.length} step{remaining.length === 1 ? "" : "s"} remaining
             </div>
-            <Button size="sm" variant="outline" className="flex-none" onClick={() => nav(it.to)} data-testid={`firstrun-${it.key}`}>
-              {it.done ? it.doneCta : it.cta}
-            </Button>
+            <div className="t-helper mt-0.5">{next.prompt}</div>
           </div>
-        ))}
+        </div>
+        <div className="flex flex-none items-center gap-1.5">
+          <Button onClick={() => nav(next.to)} data-testid={`firstrun-${next.key}`}>
+            {next.cta}
+          </Button>
+          <button
+            type="button"
+            onClick={dismiss}
+            aria-label="Dismiss setup"
+            data-testid="firstrun-dismiss"
+            className="rounded-md p-1.5 text-muted outline-none transition hover:bg-border/50 hover:text-fg focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            <X size={16} />
+          </button>
+        </div>
       </div>
+
+      {done.length > 0 ? (
+        <div className="mt-4 border-t border-border pt-3">
+          <button
+            type="button"
+            onClick={() => setShowDone((v) => !v)}
+            aria-expanded={showDone}
+            data-testid="firstrun-toggle-done"
+            className="inline-flex items-center gap-1.5 rounded-md text-[13px] text-muted outline-none transition hover:text-fg focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            <ChevronDown size={14} className={`transition-transform ${showDone ? "rotate-180" : ""}`} />
+            Show completed steps ({done.length})
+          </button>
+          {showDone ? (
+            <div className="mt-2.5 space-y-1.5">
+              {done.map((it) => (
+                <div key={it.key} className="flex items-center gap-2 text-[13px]" data-testid={`firstrun-done-${it.key}`}>
+                  <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-border/60 text-muted">
+                    <Check size={12} />
+                  </span>
+                  <span className="text-fg">{it.title}</span>
+                  <span className="ml-auto text-muted">Completed</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </Card>
+  );
+}
+
+/** Business labels for activity kinds — an auditor-grant event reads distinct from a payment. */
+const TYPE_LABEL: Record<ActivityItem["kind"], string> = {
+  payment: "Payment",
+  invoice: "Invoice",
+  payroll: "Payroll",
+  deposit: "Deposit",
+  withdrawal: "Withdrawal",
+  grant: "Auditor access",
+};
+
+/** Where a recent-activity row deep-links. */
+function routeForActivity(a: ActivityItem): string {
+  switch (a.kind) {
+    case "payment":
+      return a.status === "needs_approval" ? "/approvals" : "/audit";
+    case "invoice":
+      return "/invoices";
+    case "payroll":
+      return "/payroll";
+    case "deposit":
+    case "withdrawal":
+      return "/treasury";
+    case "grant":
+      return "/grants";
+    default:
+      return "/audit";
+  }
+}
+
+/** The one calm "visible in Benzo, hidden publicly" indicator for a money row. */
+function PrivateOnChain() {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[12.5px] text-muted">
+      <EyeOff size={12} className="text-shielded" />
+      {PRIVACY.privateOnChain}
+    </span>
   );
 }
 
 export function Dashboard() {
   const nav = useNavigate();
-  const { dashboard, treasury, payments, masked, loading, error, refresh } = useConsole();
+  const { dashboard, treasury, payments, counterparties, masked, loading, error, refresh } = useConsole();
+
   const pending = payments.filter((p) => p.status === "needs_approval");
-  // A payment row is unverified when its backing payment never settled on-chain.
-  const unverifiedActivityIds = new Set(
-    payments
-      .filter((p) => p.settlement?.onChain === false)
-      .map((p) => p.id),
-  );
+  const firstPending = pending[0];
+  const cpName = firstPending ? counterparties.find((c) => c.id === firstPending.toCounterpartyId)?.name ?? "Recipient" : "";
+  const pendingAmount = firstPending
+    ? masked || firstPending.privacy.amountHidden
+      ? "••••••"
+      : formatMoney(firstPending.amount.amount)
+    : "";
+
+  // A row is unverified when its backing payment never settled on-chain.
+  const unverified = new Set(payments.filter((p) => p.settlement?.onChain === false).map((p) => p.id));
+  const activity = dashboard?.recentActivity ?? [];
+
   const targetDollars = Number(treasury?.totalHidden.amount ?? dashboard?.totalPosition.amount ?? "0") / USDC_SCALE;
   const animatedTotal = useCountUp(targetDollars);
 
+  /** •••••• (hidden from viewer) · — (no amount) · the figure (visible). */
+  function amountCell(a: ActivityItem) {
+    if (a.amountLabel === "—") return <span className="text-muted">—</span>;
+    if (masked || a.amountLabel === "Private") return <span className="mask">••••••</span>;
+    return <span className="tnum font-medium text-fg">{a.amountLabel}</span>;
+  }
+
   return (
     <Screen>
-      <div className="mb-5">
-        <h1 className="font-display text-2xl">Overview</h1>
-        <p className="mt-1 text-[13.5px] text-muted">Everything settles on {NETWORK_LABEL} through eERC · amounts are private by default</p>
-      </div>
+      <PageHeader title="Overview" subtitle="Manage balances, approvals, payroll, and payments." />
 
-      <FirstRunChecklist />
+      <SetupBanner />
 
       {error && !loading ? (
-        <Card className="mb-5 flex items-center justify-between gap-4 border-danger/30 bg-danger/8 p-4" data-testid="dashboard-error">
+        <Card className="mb-6 flex items-center justify-between gap-4 border-danger/30 bg-danger/5" data-testid="dashboard-error">
           <div className="min-w-0">
-            <div className="text-[13.5px] font-semibold text-danger">Couldn't load your console</div>
-            <div className="mt-0.5 truncate text-[12.5px] text-muted">{error}</div>
+            <div className="t-card-title text-danger">Couldn't load your console</div>
+            <div className="t-helper mt-0.5 truncate">{error}</div>
           </div>
           <Button variant="outline" className="flex-none" onClick={() => void refresh()} data-testid="dashboard-retry">
             <RefreshCw size={14} /> Retry
@@ -143,101 +246,132 @@ export function Dashboard() {
         </Card>
       ) : null}
 
-      <Stagger className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <Stagger.Item index={0} className="h-full">
-          <Card className="flex h-full flex-col p-5">
-            <div className="flex items-center gap-2 text-[12.5px] font-medium text-muted">
-              Treasury balance
+      <Stagger className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
+        {/* Private treasury balance — 7 col */}
+        <Stagger.Item index={0} className="lg:col-span-7">
+          <Card>
+            <div className="flex items-center justify-between gap-3">
+              <div className="t-label text-muted">Private treasury balance</div>
               <Pill tone="shielded">
                 <ShieldCheck size={12} /> Provable on demand
               </Pill>
             </div>
             {loading ? (
-              <Skeleton className="mt-2 h-10 w-48" />
+              <Skeleton className="mt-3 h-9 w-52" />
             ) : (
-              <div className="font-display tnum mt-2 text-[40px] leading-none" data-testid="treasury-total">
-                {masked ? "••••••" : fmtUsd(String(Math.round(animatedTotal * USDC_SCALE)))}
+              <div className="t-summary mt-3 text-fg" data-testid="treasury-total">
+                {masked ? "••••••" : <Amount minor={String(Math.round(animatedTotal * USDC_SCALE))} />}
               </div>
             )}
-            <div className="mt-2 text-[12.5px] text-muted">Across all accounts · private by default</div>
+            <div className="t-helper mt-2">Across all accounts · public balance not included</div>
           </Card>
         </Stagger.Item>
 
-        <Stagger.Item index={1} className="h-full">
-          <Card className="flex h-full flex-col p-5">
-            <div className="text-[12.5px] font-medium text-muted">Pending your approval</div>
-            <div className="font-display tnum mt-1 text-[34px] leading-none" data-testid="pending-count">{pending.length}</div>
-            <div className="mt-2 flex-1">
-              {pending.slice(0, 2).map((p) => (
-                <div key={p.id} className="flex items-center gap-2.5 border-b border-border py-2.5 text-[13.5px] last:border-0">
-                  {p.type === "payroll_payout" ? <Users size={15} className="text-[#8a9099]" /> : <Building2 size={15} className="text-[#8a9099]" />}
-                  <span className="flex-1 truncate">{p.memo ?? "Payment"}</span>
-                  <span className="font-display tnum font-semibold text-fg">{masked || p.privacy.amountHidden ? "••••" : fmtUsd(p.amount.amount)}</span>
+        {/* Approval awaiting you — 5 col */}
+        <Stagger.Item index={1} className="lg:col-span-5">
+          <Card className="flex flex-col">
+            <div className="t-label text-muted">Approvals</div>
+            {pending.length === 0 ? (
+              <div className="mt-2">
+                <div className="t-card-title text-fg" data-testid="pending-count">
+                  No approvals awaiting you
                 </div>
-              ))}
-              {pending.length === 0 ? <div className="py-4 text-sm text-muted">Nothing waiting on you.</div> : null}
-            </div>
-            <Button className="mt-3 self-start" onClick={() => nav("/approvals")} data-testid="review-approvals">
-              Review approvals <ArrowRight size={15} />
-            </Button>
+                <div className="t-helper mt-1">You're all caught up.</div>
+              </div>
+            ) : (
+              <>
+                <div className="t-card-title mt-2 text-fg" data-testid="pending-count">
+                  {pending.length} approval{pending.length === 1 ? "" : "s"} awaiting you
+                </div>
+                <button
+                  type="button"
+                  onClick={() => nav("/approvals")}
+                  className="mt-3 w-full rounded-lg border border-border p-3 text-left outline-none transition hover:bg-border/30 focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  <div className="t-body truncate font-medium text-fg">{firstPending.memo ?? "Payment"}</div>
+                  <div className="t-helper mt-0.5 truncate">
+                    {cpName} · {pendingAmount}
+                  </div>
+                  <div className="t-helper mt-1">Submitted {timeAgo(firstPending.createdAt)}</div>
+                </button>
+                {pending.length > 1 ? <div className="t-helper mt-2">+{pending.length - 1} more awaiting you</div> : null}
+                <Button className="mt-4 self-start" onClick={() => nav("/approvals")} data-testid="review-approvals">
+                  Review {pending.length === 1 ? "approval" : "approvals"} <ArrowRight size={15} />
+                </Button>
+              </>
+            )}
           </Card>
         </Stagger.Item>
       </Stagger>
 
+      {/* Recent activity — full width */}
       <Stagger className="mt-8">
         <Stagger.Item index={2}>
-          <Card className="overflow-hidden p-0">
-            <div className="border-b border-border px-5 py-3.5 text-[13px] font-semibold">Recent activity</div>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-[13px]">
-                <thead>
-                  <tr>
-                    {["Payee", "Type", "Status", "Amount"].map((h, i) => (
-                      <th key={h} className={`bg-bg px-5 py-2.5 text-[11px] font-bold uppercase tracking-[0.05em] text-[#a3a7ac] ${i === 3 ? "text-right" : "text-left"}`}>
-                        {h}
-                      </th>
-                    ))}
+          <div className="mb-3 flex items-center justify-between gap-4">
+            <h2 className="t-section text-fg">Recent activity</h2>
+            <Button variant="ghost" size="sm" onClick={() => nav("/audit")} data-testid="view-all-activity">
+              View all activity <ArrowRight size={14} />
+            </Button>
+          </div>
+          <Table>
+            <thead>
+              <tr>
+                <Th>Date</Th>
+                <Th>Activity</Th>
+                <Th>Type</Th>
+                <Th>Status</Th>
+                <Th align="right">Amount</Th>
+                <Th>Privacy</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                [0, 1, 2].map((i) => (
+                  <tr key={i}>
+                    <td className="border-t border-border px-4 py-4" colSpan={6}>
+                      <Skeleton className="h-4 w-full" />
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    [0, 1, 2].map((i) => (
-                      <tr key={i}>
-                        <td className="border-t border-border px-5 py-3" colSpan={4}>
-                          <Skeleton className="h-4 w-full" />
-                        </td>
-                      </tr>
-                    ))
-                  ) : (dashboard?.recentActivity ?? []).length === 0 ? (
-                    <tr>
-                      <td className="px-5 py-8 text-center text-muted" colSpan={4}>
-                        No activity yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    dashboard?.recentActivity.map((a) => {
-                      const isPrivate = a.amountLabel === "Private" || masked;
-                      return (
-                        <tr key={a.id} className="transition hover:bg-[#f4f3ef]/60" data-testid="activity-row">
-                          <td className="border-t border-border px-5 py-3 text-[#2c3744]">{a.title}</td>
-                          <td className="border-t border-border px-5 py-3 capitalize text-muted">{a.kind}</td>
-                          <td className="border-t border-border px-5 py-3">
-                            <span className="inline-flex items-center gap-1.5">
-                              <StatusPill status={a.status} />
-                              {unverifiedActivityIds.has(a.id) ? <Pill tone="warning">Unverified</Pill> : null}
-                            </span>
-                          </td>
-                          <td className="border-t border-border px-5 py-3 text-right font-display tnum">
-                            {isPrivate ? <span className="mask">••••••</span> : <span className="inline-flex items-center gap-1.5 font-semibold text-fg">{a.amountLabel} <ShieldedBadge /></span>}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+                ))
+              ) : activity.length === 0 ? (
+                <tr>
+                  <td className="border-t border-border px-4 py-10 text-center text-muted" colSpan={6}>
+                    No activity yet.
+                  </td>
+                </tr>
+              ) : (
+                activity.map((a) => (
+                  <tr
+                    key={a.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${a.title} — view details`}
+                    onClick={() => nav(routeForActivity(a))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        nav(routeForActivity(a));
+                      }
+                    }}
+                    data-testid="activity-row"
+                    className="h-[62px] cursor-pointer outline-none transition hover:bg-border/30 focus-visible:bg-border/40"
+                  >
+                    <Td className="whitespace-nowrap text-muted">{fmtDateTime(a.at)}</Td>
+                    <Td className="font-medium text-fg">{a.title}</Td>
+                    <Td className="text-muted">{TYPE_LABEL[a.kind] ?? a.kind}</Td>
+                    <Td>
+                      <span className="inline-flex items-center gap-1.5">
+                        <StatusPill status={a.status} />
+                        {unverified.has(a.id) ? <Pill tone="warning">Unverified</Pill> : null}
+                      </span>
+                    </Td>
+                    <Td align="right">{amountCell(a)}</Td>
+                    <Td>{a.kind === "grant" ? <span className="text-muted">—</span> : <PrivateOnChain />}</Td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </Table>
         </Stagger.Item>
       </Stagger>
     </Screen>
