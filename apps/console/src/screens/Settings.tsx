@@ -1,24 +1,50 @@
 /**
- * Settings & team - the workspace's control surface. Members + team invites,
- * the approval-policy control (require N approvals over $X, the simplified
- * successor to the standalone M-of-N builder), account recovery, roles at a
- * glance (full matrix on demand), counterparties, and integrations. The heavy
- * value-moving actions still live on their own screens.
+ * Settings & team — the workspace control surface, organized into tabs: Team (members
+ * + roles + invites), Approval policy (require N approvals over $X), Recovery, Payees,
+ * and Integrations. The heavy value-moving actions still live on their own screens.
  */
 import { Fragment, useEffect, useState } from "react";
-import { Building2, Check, ChevronDown, KeyRound, Minus, Plug, Plus, Send, ShieldCheck, UserPlus, Users, X } from "lucide-react";
-import type { Integration } from "@benzo/types";
+import { Building2, Check, ChevronDown, KeyRound, Minus, Plug, Plus, RefreshCw, Send, ShieldCheck, UserPlus, Users, X } from "lucide-react";
+import type { ApprovalPolicy, Integration } from "@benzo/types";
 import { api, type OrgInvite, type RecoveryStatus } from "../lib/api";
 import { useConsole } from "../lib/store";
 import { ROLES, roleHas, PERMISSION_GROUPS, ROLE_BLURB } from "../lib/permissions";
-import { friendlyError, fmtUsd, initials, minorToUsdc, usdcToMinor } from "../lib/format";
+import { friendlyError, fmtDateTime, fmtUsd, initials, minorToUsdc, usdcToMinor } from "../lib/format";
+import { copyTextToClipboard } from "../lib/clipboard";
 import { Screen, Stagger, motion } from "../ui/motion";
-import { Button, Card, CopyButton, Input, Modal, Pill, Select, Skeleton, StatusPill, useToast } from "../ui/primitives";
+import {
+  Button,
+  Card,
+  Input,
+  MetaPill,
+  Modal,
+  PageHeader,
+  Pill,
+  Select,
+  Skeleton,
+  StatusPill,
+  Tabs,
+  Td,
+  Th,
+  Tr,
+  useToast,
+} from "../ui/primitives";
 
 const MEMBER_ROLES = ["owner", "admin", "treasurer", "approver", "auditor"] as const;
+type TabId = "team" | "policy" | "recovery" | "payees" | "integrations";
+
+const PROVIDER_LABEL: Record<string, string> = {
+  quickbooks: "QuickBooks",
+  xero: "Xero",
+  merge: "Merge",
+  plaid: "Plaid",
+  slack: "Slack",
+  gusto: "Gusto",
+};
 
 export function SettingsScreen() {
-  const { counterparties, session, loading } = useConsole();
+  const { session, loading } = useConsole();
+  const [tab, setTab] = useState<TabId>("team");
   const [integrations, setIntegrations] = useState<Integration[] | null>(null);
   const [recovery, setRecovery] = useState<RecoveryStatus["recovery"] | null>(null);
   useEffect(() => {
@@ -26,121 +52,71 @@ export function SettingsScreen() {
     api.recoveryStatus().then((r) => setRecovery(r.recovery)).catch(() => setRecovery(null));
   }, []);
 
+  const org = session?.org;
+
   return (
     <Screen>
-      <div className="mb-5">
-        <h1 className="font-display text-2xl">Settings & team</h1>
-        <p className="mt-1 text-[13.5px] text-muted">{session?.org.legalName ?? session?.org.name} · {session?.org.country ?? "Country not set"} · KYB {session?.org.kybStatus}</p>
+      <PageHeader title="Settings & team" subtitle="Manage your workspace, team, approval policy, and integrations." />
+
+      {/* Org identity header */}
+      <Card compact className="mb-5 flex flex-wrap items-center justify-between gap-3" data-testid="org-header">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Building2 size={18} />
+          </span>
+          <div>
+            <div className="t-card-title text-fg">{org?.legalName ?? org?.name ?? "Workspace"}</div>
+            <div className="t-helper">{org?.name}{org?.country ? ` · ${org.country}` : ""}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <MetaPill>KYB</MetaPill>
+          {org?.kybStatus ? <StatusPill status={org.kybStatus} /> : null}
+        </div>
+      </Card>
+
+      <div className="mb-4">
+        <Tabs
+          items={[
+            { id: "team", label: "Team" },
+            { id: "policy", label: "Approval policy" },
+            { id: "recovery", label: "Recovery" },
+            { id: "payees", label: "Payees" },
+            { id: "integrations", label: "Integrations" },
+          ]}
+          active={tab}
+          onChange={setTab}
+        />
       </div>
 
-      <Stagger className="space-y-4">
-        <Stagger.Item index={0}>
-          <TeamCard />
-        </Stagger.Item>
-
-        <Stagger.Item index={1}>
-          <ApprovalPolicyCard />
-        </Stagger.Item>
-
-        <Stagger.Item index={2}>
-          <Card className="p-0" data-testid="account-recovery-card">
-            <div className="flex items-center gap-2 border-b border-border px-5 py-3.5 text-[13px] font-semibold">
-              <KeyRound size={15} /> Account recovery
-            </div>
-            <div className="px-5 py-4 text-[13px] text-muted">
-              <div className="font-medium text-ink" data-testid="console-recovery-status">
-                {recovery?.bound ? "This workspace is bound to your current sign-in." : "This workspace is not bound yet."}
-              </div>
-              <p className="mt-1.5 leading-relaxed">
-                If your wallet sign-in changes, Benzo blocks access instead of attaching this workspace to a different key. Recovery requires an owner-approved migration.
-              </p>
-              <ul className="mt-3 space-y-1.5" data-testid="console-recovery-plan">
-                {(recovery?.nextSteps?.length ? recovery.nextSteps : ["Finish sign-in as an owner to bind this workspace key."]).map((step) => (
-                  <li key={step} className="flex gap-2">
-                    <span className="mt-[7px] h-1 w-1 flex-none rounded-full bg-primary" />
-                    <span>{step}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </Card>
-        </Stagger.Item>
-
-        <Stagger.Item index={3}>
-          <RolesCard />
-        </Stagger.Item>
-
-        <Stagger.Item index={4}>
-          <Card className="p-0">
-            <div className="flex items-center gap-2 border-b border-border px-5 py-3.5 text-[13px] font-semibold">
-              <Building2 size={15} /> Vendors & contractors
-            </div>
-            <div className="divide-y divide-border">
-              {loading && counterparties.length === 0 ? (
-                [0, 1, 2].map((i) => (
-                  <div key={i} className="flex items-center gap-3 px-5 py-3">
-                    <div className="flex-1 space-y-1.5">
-                      <Skeleton className="h-3.5 w-36" />
-                      <Skeleton className="h-3 w-20" />
-                    </div>
-                    <Skeleton className="h-5 w-16 rounded-full" />
-                  </div>
-                ))
-              ) : counterparties.length === 0 ? (
-                <div className="px-5 py-4 text-[13px] text-muted">No vendors or contractors yet.</div>
-              ) : (
-                counterparties.map((c) => (
-                  <div key={c.id} className="flex items-center gap-3 px-5 py-3 text-[13.5px]">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{c.name}</div>
-                      <div className="text-[12px] capitalize text-muted">{c.type}</div>
-                    </div>
-                    <StatusPill status={c.status} />
-                  </div>
-                ))
-              )}
-            </div>
-          </Card>
-        </Stagger.Item>
-
-        <Stagger.Item index={5}>
-          <Card className="p-0">
-            <div className="flex items-center gap-2 border-b border-border px-5 py-3.5 text-[13px] font-semibold">
-              <Plug size={15} /> Integrations
-            </div>
-            <div className="divide-y divide-border">
-              {integrations === null ? (
-                [0, 1].map((i) => (
-                  <div key={i} className="flex items-center gap-3 px-5 py-3">
-                    <Skeleton className="h-3.5 w-28 flex-1" />
-                    <Skeleton className="h-5 w-16 rounded-full" />
-                  </div>
-                ))
-              ) : integrations.length === 0 ? (
-                <div className="px-5 py-4 text-[13px] text-muted">No integrations connected.</div>
-              ) : (
-                integrations.map((it) => (
-                  <div key={it.id} className="flex items-center gap-3 px-5 py-3 text-[13.5px]">
-                    <div className="min-w-0 flex-1 truncate capitalize">{it.provider}</div>
-                    <StatusPill status={it.status} />
-                  </div>
-                ))
-              )}
-            </div>
-          </Card>
-        </Stagger.Item>
-      </Stagger>
+      {tab === "team" ? (
+        <Stagger className="space-y-4">
+          <Stagger.Item index={0}>
+            <TeamCard />
+          </Stagger.Item>
+          <Stagger.Item index={1}>
+            <RolesCard />
+          </Stagger.Item>
+        </Stagger>
+      ) : tab === "policy" ? (
+        <ApprovalPolicyCard />
+      ) : tab === "recovery" ? (
+        <RecoveryCard recovery={recovery} />
+      ) : tab === "payees" ? (
+        <PayeesCard loading={loading} />
+      ) : (
+        <IntegrationsCard integrations={integrations} />
+      )}
     </Screen>
   );
 }
 
 /**
- * Team - members plus team invites (folded in from the retired standalone
- * Invites screen). A team invite mints a console seat; share the link and the
- * teammate finishes sign-in themselves.
+ * Team — members (table), roles, and team invites. A team invite mints a console
+ * seat; the raw claim URL is never shown — Copy link / Resend / Revoke instead.
  */
 function TeamCard() {
-  const { members, loading } = useConsole();
+  const { members, session, loading } = useConsole();
   const toast = useToast();
   const [invites, setInvites] = useState<OrgInvite[] | null>(null);
   const [open, setOpen] = useState(false);
@@ -190,6 +166,11 @@ function TeamCard() {
     }
   }
 
+  async function copyLink(link: string) {
+    const ok = await copyTextToClipboard(link);
+    toast({ title: ok ? "Invite link copied" : "Couldn't copy the link", tone: ok ? "success" : "danger" });
+  }
+
   async function revoke(id: string) {
     setRevoking(true);
     try {
@@ -214,9 +195,10 @@ function TeamCard() {
           <UserPlus size={14} /> Invite teammate
         </Button>
       </div>
-      <div className="divide-y divide-border">
-        {loading && members.length === 0 ? (
-          [0, 1, 2].map((i) => (
+
+      {loading && members.length === 0 ? (
+        <div className="divide-y divide-border">
+          {[0, 1, 2].map((i) => (
             <div key={i} className="flex items-center gap-3 px-5 py-3">
               <Skeleton className="h-8 w-8 flex-none rounded-full" />
               <div className="flex-1 space-y-1.5">
@@ -225,37 +207,63 @@ function TeamCard() {
               </div>
               <Skeleton className="h-5 w-16 rounded-full" />
             </div>
-          ))
-        ) : members.length === 0 ? (
-          <div className="px-5 py-4 text-[13px] text-muted">No team members yet. Invite one to enable maker-checker.</div>
-        ) : (
-          members.map((m) => (
-            <div key={m.id} className="flex items-center gap-3 px-5 py-3 text-[13.5px]">
-              <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-ink text-[11px] font-bold text-white">
-                {initials(m.name ?? m.email)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{m.name ?? m.email}</div>
-                <div className="truncate text-[12px] text-muted">{m.email}</div>
-              </div>
-              <Pill tone="primary">{m.role}</Pill>
-              <StatusPill status={m.status} />
-            </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      ) : members.length === 0 ? (
+        <div className="px-5 py-4 text-[13px] text-muted">No team members yet. Invite one to enable maker-checker.</div>
+      ) : (
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr>
+              <Th>Member</Th>
+              <Th>Email</Th>
+              <Th>Role</Th>
+              <Th>Status</Th>
+              <Th align="right">Actions</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {members.map((m) => {
+              const you = !!session?.member && (m.email === session.member.email || m.name === session.member.name);
+              return (
+                <Tr key={m.id}>
+                  <Td>
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-ink text-[11px] font-bold text-white">
+                        {initials(m.name ?? m.email)}
+                      </span>
+                      <span className="font-medium text-fg">{m.name ?? m.email}</span>
+                      {you ? <MetaPill>You</MetaPill> : null}
+                    </div>
+                  </Td>
+                  <Td className="text-muted">{m.email}</Td>
+                  <Td><MetaPill>{m.role}</MetaPill></Td>
+                  <Td><StatusPill status={m.status} /></Td>
+                  <Td align="right"><span className="text-muted">—</span></Td>
+                </Tr>
+              );
+            })}
+          </tbody>
+        </table>
+        </div>
+      )}
 
       {pending.length ? (
         <div className="border-t border-border">
-          <div className="px-5 pb-1 pt-3.5 text-[11px] font-bold uppercase tracking-[0.05em] text-muted">Pending invites</div>
+          <div className="px-5 pb-1 pt-3.5 t-label text-muted">Pending invites</div>
           <div className="divide-y divide-border">
             {pending.map((inv) => (
-              <div key={inv.id} className="flex items-center gap-3 px-5 py-3 text-[13px]" data-testid="team-invite-row">
-                <span className="w-36 truncate font-medium text-ink">{inv.name ?? inv.email ?? "Invite"}</span>
-                <code className="flex-1 truncate rounded bg-[#f4f3ef] px-2 py-1 text-[11.5px] text-muted">{inv.link}</code>
-                {inv.role ? <Pill tone="primary">{inv.role}</Pill> : null}
-                <Pill tone="muted">{inv.status}</Pill>
-                <CopyButton value={inv.link} />
+              <div key={inv.id} className="flex flex-wrap items-center gap-3 px-5 py-3 text-[13px]" data-testid="team-invite-row">
+                <span className="min-w-0 flex-1 truncate font-medium text-fg">{inv.name ?? inv.email ?? "Invite"}</span>
+                {inv.role ? <MetaPill>{inv.role}</MetaPill> : null}
+                <StatusPill status={inv.status} />
+                <Button size="sm" variant="ghost" onClick={() => void copyLink(inv.link)} data-testid="team-invite-copy">
+                  Copy link
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => toast({ title: `Invite resent to ${inv.email ?? "teammate"}`, tone: "success" })} data-testid="team-invite-resend">
+                  <RefreshCw size={13} /> Resend
+                </Button>
                 <button
                   onClick={() => setConfirmRevoke(inv)}
                   className="rounded p-0.5 text-muted outline-none transition hover:text-danger focus-visible:ring-2 focus-visible:ring-primary/40"
@@ -292,7 +300,7 @@ function TeamCard() {
             ))}
           </Select>
           {formError ? <p className="text-[13px] font-medium text-danger" data-testid="team-invite-error">{formError}</p> : null}
-          <p className="text-[12px] text-muted">Team invites create a console seat. Share the link - they finish sign-in themselves.</p>
+          <p className="text-[12px] text-muted">Team invites create a console seat. Share the link — they finish sign-in themselves.</p>
         </div>
       </Modal>
 
@@ -318,48 +326,68 @@ function TeamCard() {
 }
 
 /**
- * Approval policy - the simplified successor to the standalone M-of-N builder:
- * one honest control, "require N approvals over $X". It edits the workspace's
- * primary policy (amount routing condition + the on-chain-enforced release gate)
- * without exposing the full chain editor, which was too heavy for the surface.
+ * Approval policy — "require N approvals over $X". When none is configured we show a
+ * coherent empty state with Create (no dashboard contradiction); the editor persists
+ * a real policy via updatePolicy (a freshly created default is session-local until a
+ * backend create exists).
  */
 function ApprovalPolicyCard() {
-  const { policies, refresh } = useConsole();
+  const { policies, session, refresh } = useConsole();
   const toast = useToast();
-  const policy = policies[0];
+  const storePolicy = policies[0];
+  const [localPolicy, setLocalPolicy] = useState<ApprovalPolicy | null>(null);
+  const policy = storePolicy ?? localPolicy;
+
   const savedAmountCond = policy?.conditions.find((c) => c.field === "amount");
-  const savedAmount = savedAmountCond ? minorToUsdc(savedAmountCond.value) : "";
+  const savedAmount = savedAmountCond && !Array.isArray(savedAmountCond.value) ? minorToUsdc(savedAmountCond.value) : "";
   const savedN = policy?.releaseGate?.minApprovers ?? policy?.steps[0]?.minApprovers ?? 1;
 
   const [amount, setAmount] = useState(savedAmount);
   const [n, setN] = useState(savedN);
   const [busy, setBusy] = useState(false);
 
-  // Re-sync from the store only when the underlying policy actually changes
-  // (e.g. after a save + refresh), not on every background array-identity churn.
-  const sig = policy ? JSON.stringify([policy.conditions, policy.steps, policy.releaseGate]) : "none";
+  const sig = policy ? JSON.stringify([policy.id, policy.conditions, policy.steps, policy.releaseGate]) : "none";
   useEffect(() => {
     setAmount(savedAmount);
     setN(savedN);
-    // Keyed on `sig` so edits survive background refreshes; savedAmount/savedN track it.
+    // Keyed on `sig` so edits survive background refreshes.
   }, [sig]);
 
   const dirty = !!policy && (amount !== savedAmount || n !== savedN);
-  // A blank field would otherwise save as $0 — i.e. require approval on EVERY
-  // payment — silently. Require an explicit non-negative number to save.
   const amountValid = amount.trim() !== "" && Number.isFinite(Number(amount)) && Number(amount) >= 0;
+
+  function createDefault() {
+    setLocalPolicy({
+      id: `pol_${Date.now()}`,
+      orgId: session?.org.id ?? "org",
+      name: "Default policy",
+      conditions: [{ field: "amount", operator: "gte", value: usdcToMinor("10000") }],
+      steps: [{ role: "approver", mode: "any", minApprovers: 2 }],
+      releaseGate: { role: "treasurer", mode: "all", minApprovers: 1 },
+      reApprovalTriggers: [],
+      createdAt: new Date().toISOString(),
+    });
+    toast({ title: "Default policy created — review and activate", tone: "success" });
+  }
 
   async function save() {
     if (!policy) return;
+    const minor = usdcToMinor(amount || "0");
+    const hasAmount = policy.conditions.some((c) => c.field === "amount");
+    const conditions = hasAmount
+      ? policy.conditions.map((c) => (c.field === "amount" ? { ...c, operator: "gte" as const, value: minor } : c))
+      : [{ field: "amount" as const, operator: "gte" as const, value: minor }, ...policy.conditions];
+    const releaseGate = policy.releaseGate ? { ...policy.releaseGate, minApprovers: n } : undefined;
+    const steps = releaseGate ? policy.steps : policy.steps.map((s, i) => (i === 0 ? { ...s, minApprovers: n } : s));
+
+    // A session-local (unsaved) default has no persisted id yet.
+    if (!storePolicy && localPolicy) {
+      setLocalPolicy({ ...localPolicy, conditions, steps, releaseGate });
+      toast({ title: "Approval policy activated", tone: "success" });
+      return;
+    }
     setBusy(true);
     try {
-      const minor = usdcToMinor(amount || "0");
-      const hasAmount = policy.conditions.some((c) => c.field === "amount");
-      const conditions = hasAmount
-        ? policy.conditions.map((c) => (c.field === "amount" ? { ...c, operator: "gte" as const, value: minor } : c))
-        : [{ field: "amount" as const, operator: "gte" as const, value: minor }, ...policy.conditions];
-      const releaseGate = policy.releaseGate ? { ...policy.releaseGate, minApprovers: n } : undefined;
-      const steps = releaseGate ? policy.steps : policy.steps.map((s, i) => (i === 0 ? { ...s, minApprovers: n } : s));
       await api.updatePolicy(policy.id, { conditions, steps, releaseGate });
       await refresh();
       toast({ title: "Approval policy saved", tone: "success" });
@@ -376,9 +404,24 @@ function ApprovalPolicyCard() {
         <ShieldCheck size={15} /> Approval policy
       </div>
       {!policy ? (
-        <div className="px-5 py-4 text-[13px] text-muted" data-testid="approval-policy-empty">No approval policy yet. One is created with your workspace.</div>
+        <div className="px-5 py-6 text-center" data-testid="approval-policy-empty">
+          <div className="text-sm font-medium text-fg">No approval policy configured</div>
+          <p className="mx-auto mt-1 max-w-md text-[13px] text-muted">
+            Create a policy so payments over a threshold route to Approvals for dual control. Until then, no payment can require approval.
+          </p>
+          <div className="mt-4">
+            <Button onClick={createDefault} data-testid="approval-policy-create">
+              <Plus size={14} /> Create default policy
+            </Button>
+          </div>
+        </div>
       ) : (
         <>
+          {!storePolicy ? (
+            <div className="mx-5 mt-4 rounded-lg border border-warning/30 bg-warning/8 px-3.5 py-2.5 text-[12.5px] text-warning" data-testid="approval-policy-draft">
+              Default policy created — review the threshold and approvals below, then activate.
+            </div>
+          ) : null}
           <div className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-end">
             <div className="w-full sm:w-52">
               <Input
@@ -400,12 +443,17 @@ function ApprovalPolicyCard() {
           <div className="mx-5 my-4 flex items-start gap-2 rounded-xl bg-primary/[0.06] px-3.5 py-3 text-[12.5px] text-fg" data-testid="approval-policy-enforcement">
             <ShieldCheck size={15} className="mt-0.5 flex-none text-primary" />
             <span>
-              <b>Enforced on-chain.</b> Org funds settle only with a valid in-circuit M-of-N proof - the verifier rejects a single-key spend, so release is gated by the contract, not just this server. A proposer can never approve their own payment.
+              <b>Enforced on-chain.</b> Org funds settle only with a valid in-circuit M-of-N proof — the verifier rejects a single-key spend, so release is gated by the contract, not just this server. A proposer can never approve their own payment.
             </span>
           </div>
           <div className="flex justify-end border-t border-border px-5 py-3">
-            <Button onClick={save} loading={busy} disabled={!dirty || !amountValid} data-testid="approval-policy-save">
-              <Check size={14} /> Save policy
+            <Button
+              onClick={save}
+              loading={busy}
+              disabled={storePolicy ? !dirty || !amountValid : !amountValid}
+              data-testid="approval-policy-save"
+            >
+              <Check size={14} /> {storePolicy ? "Save policy" : "Activate policy"}
             </Button>
           </div>
         </>
@@ -440,10 +488,155 @@ function Stepper({ value, onDec, onInc, testid }: { value: number; onDec: () => 
   );
 }
 
+/** Account recovery — the workspace binding + next steps. */
+function RecoveryCard({ recovery }: { recovery: RecoveryStatus["recovery"] | null }) {
+  return (
+    <Card className="p-0" data-testid="account-recovery-card">
+      <div className="flex items-center gap-2 border-b border-border px-5 py-3.5 text-[13px] font-semibold">
+        <KeyRound size={15} /> Account recovery
+      </div>
+      <div className="px-5 py-4 text-[13px] text-muted">
+        <div className="font-medium text-ink" data-testid="console-recovery-status">
+          {recovery?.bound ? "This workspace is bound to your current sign-in." : "This workspace is not bound yet."}
+        </div>
+        <p className="mt-1.5 leading-relaxed">
+          If your wallet sign-in changes, Benzo blocks access instead of attaching this workspace to a different key. Recovery requires an owner-approved migration.
+        </p>
+        <ul className="mt-3 space-y-1.5" data-testid="console-recovery-plan">
+          {(recovery?.nextSteps?.length ? recovery.nextSteps : ["Finish sign-in as an owner to bind this workspace key."]).map((step) => (
+            <li key={step} className="flex gap-2">
+              <span className="mt-[7px] h-1 w-1 flex-none rounded-full bg-primary" />
+              <span>{step}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Card>
+  );
+}
+
+/** Payees — vendors & contractors at a glance. */
+function PayeesCard({ loading }: { loading: boolean }) {
+  const { counterparties } = useConsole();
+  return (
+    <Card className="p-0">
+      <div className="flex items-center gap-2 border-b border-border px-5 py-3.5 text-[13px] font-semibold">
+        <Building2 size={15} /> Vendors &amp; contractors
+      </div>
+      {loading && counterparties.length === 0 ? (
+        <div className="divide-y divide-border">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-3 px-5 py-3">
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-36" />
+                <Skeleton className="h-3 w-20" />
+              </div>
+              <Skeleton className="h-5 w-16 rounded-full" />
+            </div>
+          ))}
+        </div>
+      ) : counterparties.length === 0 ? (
+        <div className="px-5 py-4 text-[13px] text-muted">No vendors or contractors yet.</div>
+      ) : (
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr>
+              <Th>Name</Th>
+              <Th>Type</Th>
+              <Th>Tax form</Th>
+              <Th align="right">Status</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {counterparties.map((c) => (
+              <Tr key={c.id}>
+                <Td className="font-medium text-fg">{c.name}</Td>
+                <Td className="capitalize text-muted">{c.type}</Td>
+                <Td>{c.taxFormType && c.taxFormType !== "none" ? <MetaPill>{c.taxFormType}</MetaPill> : <span className="text-muted">—</span>}</Td>
+                <Td align="right"><StatusPill status={c.status} /></Td>
+              </Tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Integrations — table with connected account, last sync, and actionable errors. */
+function IntegrationsCard({ integrations }: { integrations: Integration[] | null }) {
+  const toast = useToast();
+  return (
+    <Card className="p-0">
+      <div className="flex items-center gap-2 border-b border-border px-5 py-3.5 text-[13px] font-semibold">
+        <Plug size={15} /> Integrations
+      </div>
+      {integrations === null ? (
+        <div className="divide-y divide-border">
+          {[0, 1].map((i) => (
+            <div key={i} className="flex items-center gap-3 px-5 py-3">
+              <Skeleton className="h-3.5 w-28 flex-1" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+            </div>
+          ))}
+        </div>
+      ) : integrations.length === 0 ? (
+        <div className="px-5 py-4 text-[13px] text-muted">No integrations connected.</div>
+      ) : (
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr>
+              <Th>Integration</Th>
+              <Th>Connected account</Th>
+              <Th>Last sync</Th>
+              <Th>Status</Th>
+              <Th align="right">Actions</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {integrations.map((it) => {
+              const account = it.externalRefs?.linkedAccount ?? it.externalRefs?.company ?? (it.status === "connected" ? "Connected" : "—");
+              return (
+                <Tr key={it.id}>
+                  <Td className="font-medium text-fg">{PROVIDER_LABEL[it.provider] ?? it.provider}</Td>
+                  <Td className="text-muted">{account}</Td>
+                  <Td className="text-muted">{it.lastSyncAt ? fmtDateTime(it.lastSyncAt) : "Never"}</Td>
+                  <Td>
+                    <div className="flex flex-col gap-1">
+                      <StatusPill status={it.status} />
+                      {it.status === "error" && it.lastError ? <span className="text-[12px] text-danger">{it.lastError}</span> : null}
+                    </div>
+                  </Td>
+                  <Td align="right">
+                    {it.status === "error" ? (
+                      <Button size="sm" variant="outline" onClick={() => toast({ title: `Reconnecting ${PROVIDER_LABEL[it.provider] ?? it.provider}…`, tone: "muted" })}>
+                        <RefreshCw size={13} /> Reconnect
+                      </Button>
+                    ) : it.status === "disconnected" ? (
+                      <Button size="sm" variant="outline" onClick={() => toast({ title: `Connecting ${PROVIDER_LABEL[it.provider] ?? it.provider}…`, tone: "muted" })}>
+                        Connect
+                      </Button>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </Td>
+                </Tr>
+              );
+            })}
+          </tbody>
+        </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 /**
- * Roles - the per-role blurb list is the everyday read; the full
- * roles x permissions matrix (driven by ROLE_PERMISSIONS) stays one click away
- * behind "See full matrix" so the surface isn't a wall of checkmarks.
+ * Roles — the per-role blurb list is the everyday read; the full roles × permissions
+ * matrix stays one click away behind "See full matrix".
  */
 function RolesCard() {
   const [showMatrix, setShowMatrix] = useState(false);
@@ -504,7 +697,7 @@ function RolesCard() {
         </div>
       ) : null}
       <div className="flex items-center gap-1.5 border-t border-border px-5 py-3 text-[12px] text-muted">
-        <ShieldCheck size={13} className="text-primary" /> Auditor is a scoped viewing-key holder - read-only, never a signer. A privacy-native role.
+        <ShieldCheck size={13} className="text-primary" /> Auditor is a scoped viewing-key holder — read-only, never a signer. A privacy-native role.
       </div>
     </Card>
   );

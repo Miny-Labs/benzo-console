@@ -102,6 +102,9 @@ describe("Settings consolidation", () => {
     render(<SettingsScreen />);
     await waitFor(() => expect(apiMock.invites).toHaveBeenCalled());
 
+    // The approval policy now lives on its own tab.
+    fireEvent.click(screen.getByText("Approval policy"));
+
     // Save is disabled until the control is dirty.
     expect(screen.getByTestId("approval-policy-save")).toBeDisabled();
     // Bump the required approvals from 1 to 2.
