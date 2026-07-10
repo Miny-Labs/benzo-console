@@ -28,6 +28,9 @@ import type {
 import type { OnChainRef } from "../ui/onchain";
 export type { OnChainRef };
 
+import { DEMO_MODE } from "../demo/flag";
+import { demoApi } from "../demo/api";
+
 export interface OrgInvite {
   id: string;
   kind: "member" | "contractor" | "customer";
@@ -330,7 +333,7 @@ function normalizePublicBalance(r: PublicBalanceResponse): { units: string; addr
   return { units: r.units ?? r.stroops ?? "0", address: r.address, asset: r.asset, issuer: r.issuer, live: r.live };
 }
 
-export const api = {
+const realApi = {
   session: () => http<AuthSession>("/session"),
   recoveryStatus: () => http<RecoveryStatus>("/recovery/status"),
   siweNonce: (address: string, chainId: number) =>
@@ -467,3 +470,11 @@ export const api = {
     http<{ created: number; errors: Array<{ line: number; error: string }>; invites: OrgInvite[] }>("/invites/bulk", { method: "POST", body: JSON.stringify({ csv }) }),
   revokeInvite: (id: string) => http<OrgInvite>(`/invites/${id}/revoke`, { method: "POST", body: "{}" }),
 };
+
+/**
+ * The single typed api surface every screen imports. In demo mode (build-time
+ * `VITE_DEMO_MODE=1`) it's the seeded, no-network `demoApi`; otherwise it's the
+ * real BFF client. `DEMO_MODE` folds to `false` in a normal build, so the demo
+ * branch (and its imports) tree-shake away and this is exactly `realApi`.
+ */
+export const api = DEMO_MODE ? (demoApi as unknown as typeof realApi) : realApi;

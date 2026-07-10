@@ -19,6 +19,7 @@ import type {
   ViewingGrant,
 } from "@benzo/types";
 import { api, AUTH_CHANGED_EVENT, currentAuthToken } from "./api";
+import { DEMO_MODE } from "../demo/flag";
 
 interface ConsoleState {
   session: AuthSession | null;
@@ -86,7 +87,9 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [masked, setMasked] = useState<boolean>(() => localStorage.getItem("benzo.masked") === "1");
-  const [authenticated, setAuthenticated] = useState(() => !!currentAuthToken());
+  // In demo mode there's no SIWE token; boot straight into a fake authed session
+  // so the store loads the seeded read models from the mocked api.
+  const [authenticated, setAuthenticated] = useState(() => DEMO_MODE || !!currentAuthToken());
 
   const toggleMasked = useCallback(() => {
     setMasked((m) => {
