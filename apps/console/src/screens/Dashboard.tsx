@@ -12,7 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { useReducedMotion } from "framer-motion";
 import type { ActivityItem } from "@benzo/types";
 import { useConsole } from "../lib/store";
-import { USDC_SCALE, fmtDate, formatMoney } from "../lib/format";
+import { USDC_SCALE, fmtDateTime, formatMoney } from "../lib/format";
 import { PRIVACY } from "../lib/copy";
 import { Screen, Stagger } from "../ui/motion";
 import { Amount, Button, Card, PageHeader, Pill, Skeleton, StatusPill, Table, Td, Th } from "../ui/primitives";
@@ -47,11 +47,13 @@ function timeAgo(ts: string | number | Date): string {
   const min = Math.round(diff / 60_000);
   if (min < 1) return "just now";
   if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
-  const hr = Math.round(min / 60);
+  // Derive each unit from `diff` directly — deriving hr from the already-rounded
+  // min (etc.) compounds rounding and overstates age at boundaries.
+  const hr = Math.round(diff / 3_600_000);
   if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
-  const day = Math.round(hr / 24);
+  const day = Math.round(diff / 86_400_000);
   if (day < 30) return `${day} day${day === 1 ? "" : "s"} ago`;
-  const mo = Math.round(day / 30);
+  const mo = Math.round(diff / 2_592_000_000);
   return `${mo} month${mo === 1 ? "" : "s"} ago`;
 }
 
@@ -294,7 +296,7 @@ export function Dashboard() {
                 </button>
                 {pending.length > 1 ? <div className="t-helper mt-2">+{pending.length - 1} more awaiting you</div> : null}
                 <Button className="mt-4 self-start" onClick={() => nav("/approvals")} data-testid="review-approvals">
-                  Review approval <ArrowRight size={15} />
+                  Review {pending.length === 1 ? "approval" : "approvals"} <ArrowRight size={15} />
                 </Button>
               </>
             )}
@@ -341,11 +343,20 @@ export function Dashboard() {
                 activity.map((a) => (
                   <tr
                     key={a.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${a.title} — view details`}
                     onClick={() => nav(routeForActivity(a))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        nav(routeForActivity(a));
+                      }
+                    }}
                     data-testid="activity-row"
-                    className="h-[62px] cursor-pointer outline-none transition hover:bg-border/30"
+                    className="h-[62px] cursor-pointer outline-none transition hover:bg-border/30 focus-visible:bg-border/40"
                   >
-                    <Td className="whitespace-nowrap text-muted">{fmtDate(a.at)}</Td>
+                    <Td className="whitespace-nowrap text-muted">{fmtDateTime(a.at)}</Td>
                     <Td className="font-medium text-fg">{a.title}</Td>
                     <Td className="text-muted">{TYPE_LABEL[a.kind] ?? a.kind}</Td>
                     <Td>
