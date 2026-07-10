@@ -138,11 +138,24 @@ export function Tr({ children, onClick, className = "", ...rest }: { children: R
   // shows an inset focus ring. Non-interactive rows stay out of the tab order.
   return (
     <tr
-      onClick={onClick}
+      onClick={
+        onClick
+          ? (e) => {
+              // Don't hijack a click that landed on a nested control (a button, link, or
+              // field inside a cell) — let that control run its own action.
+              if (!(e.target as HTMLElement).closest("button, a, input, select, textarea, label")) onClick();
+            }
+          : undefined
+      }
+      // `role=button` gives the clickable row an accessible name from its cell text
+      // (callers can still override with an explicit aria-label via ...rest).
+      role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={
         onClick
           ? (e) => {
+              // Only the row itself activates — a focused nested control keeps its keys.
+              if (e.target !== e.currentTarget) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 onClick();
@@ -230,7 +243,7 @@ export function CopyButton({ value }: { value: string }) {
         void copyTextToClipboard(value).then((ok) => setDone(ok ? "copied" : "blocked"));
         setTimeout(() => setDone("idle"), 1200);
       }}
-      className="inline-flex h-6 w-6 items-center justify-center rounded text-muted outline-none transition hover:bg-border/50 focus-visible:ring-2 focus-visible:ring-primary/40"
+      className="inline-flex h-7 w-7 items-center justify-center rounded text-muted outline-none transition hover:bg-border/50 focus-visible:ring-2 focus-visible:ring-primary/40"
       aria-label={done === "blocked" ? "Copy blocked" : done === "copied" ? "Copied" : "Copy"}
       title={done === "blocked" ? "Copy blocked. Select the value manually." : done === "copied" ? "Copied" : "Copy"}
     >
