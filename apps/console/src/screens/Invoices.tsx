@@ -13,7 +13,7 @@ import { ExternalLink } from "lucide-react";
 import type { Invoice, PaymentOrder } from "@benzo/types";
 import { api, type ApprovalProgressView } from "../lib/api";
 import { useConsole } from "../lib/store";
-import { USDC_SCALE, explorerTxUrl, fmtDate, formatMoney, friendlyError } from "../lib/format";
+import { USDC_SCALE, explorerTxUrl, fmtDate, fmtDateTime, formatMoney, friendlyError } from "../lib/format";
 import { Screen } from "../ui/motion";
 import {
   Amount,
@@ -80,6 +80,9 @@ function displayStatus(inv: Invoice): string {
   if (inv.status === "paid") return "paid";
   if (inv.status === "partially_paid") return "partially_paid";
   if (inv.status === "cancelled") return "cancelled";
+  // Honor an explicit server-set "overdue" even if the local dueDate math wouldn't
+  // derive it (missing/future dueDate) — don't silently downgrade it to "open".
+  if (inv.status === "overdue") return "overdue";
   if (inv.dueDate) {
     const days = (new Date(inv.dueDate).getTime() - Date.now()) / 86_400_000;
     if (days < 0) return "overdue";
@@ -354,7 +357,7 @@ export function Invoices() {
                       </Button>
                     ) : pmt ? (
                       <div className="flex flex-col items-end gap-0.5">
-                        <span className="t-helper">Paid {fmtDate(pmt.updatedAt)}</span>
+                        <span className="t-helper">Paid {fmtDateTime(pmt.updatedAt)}</span>
                         {receipt ? (
                           <a
                             href={explorerTxUrl(receipt)}
@@ -427,21 +430,21 @@ export function Invoices() {
       <Modal
         open={bulkOpen}
         onClose={() => !payingAll && setBulkOpen(false)}
-        title={`Review ${selected.size} payment${selected.size === 1 ? "" : "s"}`}
+        title={`Review ${selectedRows.length} payment${selectedRows.length === 1 ? "" : "s"}`}
         footer={
           <>
             <Button variant="ghost" onClick={() => setBulkOpen(false)} disabled={payingAll}>
               Cancel
             </Button>
             <Button loading={payingAll} onClick={paySelected} data-testid="bulk-confirm">
-              Pay {selected.size} privately
+              Pay {selectedRows.length} privately
             </Button>
           </>
         }
       >
         <div className="flex flex-col gap-4">
           <dl className="rounded-lg border border-border bg-bg px-4 py-3 text-sm">
-            <Row label="Invoices" value={String(selected.size)} />
+            <Row label="Invoices" value={String(selectedRows.length)} />
             <Row label="Total" value={masked ? "••••••" : <Amount minor={selectedTotal} code="USDC" />} />
             <Row label="Network fee" value={<span className="text-success">Free</span>} />
           </dl>
