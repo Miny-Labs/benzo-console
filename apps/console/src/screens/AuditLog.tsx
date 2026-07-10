@@ -245,7 +245,7 @@ export function AuditLog() {
               <div className="font-mono text-[12px] text-white/56">Merkle root {formatAddress(packet.anchor.merkleRoot, 8, 6)}</div>
               {anchor?.onChain ? <div className="font-mono text-[12px] text-white/56">On-chain · sequence {anchor.sequence}</div> : null}
               {anchor?.explorer ? (
-                <a href={anchor.explorer} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary hover:underline">
+                <a href={anchor.explorer} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded text-[12px] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40">
                   View root transaction <ExternalLink size={12} />
                 </a>
               ) : null}
@@ -268,7 +268,7 @@ export function AuditLog() {
         title="Audit log"
         subtitle="A tamper-evident double-entry record of every movement. Corrections are reversals, never edits."
         action={
-          <Button onClick={generatePacket} data-testid="generate-packet">
+          <Button onClick={generatePacket} loading={packetState.phase !== "idle"} data-testid="generate-packet">
             <ShieldAlert size={15} /> Generate auditor packet
           </Button>
         }

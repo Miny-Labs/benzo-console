@@ -337,7 +337,7 @@ export function Grants() {
             <div className="w-48">
               <Input label="Period" placeholder="2026-Q2" value={period} onChange={(e) => setPeriod(e.target.value)} data-testid="att-period" />
             </div>
-            <Button onClick={exportPeriodTotal} data-testid="gen-period-total">
+            <Button onClick={exportPeriodTotal} loading={attState.phase !== "idle"} data-testid="gen-period-total">
               <ShieldCheck size={15} /> Generate attestation
             </Button>
           </div>

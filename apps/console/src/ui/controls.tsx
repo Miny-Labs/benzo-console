@@ -134,7 +134,41 @@ export function Td({ children, align = "left", className = "" }: { children?: Re
   return <td className={`border-t border-border px-4 py-2.5 text-fg ${ALIGN[align]} ${className}`}>{children}</td>;
 }
 export function Tr({ children, onClick, className = "", ...rest }: { children: ReactNode; onClick?: () => void; className?: string } & Omit<HTMLAttributes<HTMLTableRowElement>, "onClick">) {
-  return <tr onClick={onClick} className={`${onClick ? "cursor-pointer hover:bg-border/30" : ""} ${className}`} {...rest}>{children}</tr>;
+  // A clickable row is keyboard-operable: focusable, Enter/Space activate it, and it
+  // shows an inset focus ring. Non-interactive rows stay out of the tab order.
+  return (
+    <tr
+      onClick={
+        onClick
+          ? (e) => {
+              // Don't hijack a click that landed on a nested control (a button, link, or
+              // field inside a cell) — let that control run its own action.
+              if (!(e.target as HTMLElement).closest("button, a, input, select, textarea, label")) onClick();
+            }
+          : undefined
+      }
+      // `role=button` gives the clickable row an accessible name from its cell text
+      // (callers can still override with an explicit aria-label via ...rest).
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              // Only the row itself activates — a focused nested control keeps its keys.
+              if (e.target !== e.currentTarget) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      className={`${onClick ? "cursor-pointer outline-none hover:bg-border/30 focus-visible:bg-border/30 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40" : ""} ${className}`}
+      {...rest}
+    >
+      {children}
+    </tr>
+  );
 }
 
 // ---------------------------------------------------------------- tabs
@@ -209,7 +243,7 @@ export function CopyButton({ value }: { value: string }) {
         void copyTextToClipboard(value).then((ok) => setDone(ok ? "copied" : "blocked"));
         setTimeout(() => setDone("idle"), 1200);
       }}
-      className="rounded p-1 text-muted outline-none transition hover:bg-border/50 focus-visible:ring-2 focus-visible:ring-primary/40"
+      className="inline-flex h-7 w-7 items-center justify-center rounded text-muted outline-none transition hover:bg-border/50 focus-visible:ring-2 focus-visible:ring-primary/40"
       aria-label={done === "blocked" ? "Copy blocked" : done === "copied" ? "Copied" : "Copy"}
       title={done === "blocked" ? "Copy blocked. Select the value manually." : done === "copied" ? "Copied" : "Copy"}
     >

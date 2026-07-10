@@ -432,7 +432,7 @@ export function Contractors() {
                                   <span className="w-20 font-medium text-fg">{e.period}</span>
                                   <StatusPill status={e.status} />
                                   {e.txHash ? (
-                                    <a href={explorerTxUrl(e.txHash)} target="_blank" rel="noreferrer" className="text-[11px] font-semibold text-primary hover:underline">on-chain receipt</a>
+                                    <a href={explorerTxUrl(e.txHash)} target="_blank" rel="noreferrer" className="rounded text-[11px] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40">on-chain receipt</a>
                                   ) : null}
                                   <span className="ml-auto"><Amount minor={e.amount} tabular /></span>
                                 </div>

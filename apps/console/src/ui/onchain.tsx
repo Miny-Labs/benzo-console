@@ -59,7 +59,7 @@ export function OnChainDetail({ refData, label = "View on-chain" }: { refData: O
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 text-[12px] font-semibold text-primary transition hover:underline"
+        className="inline-flex items-center gap-1 rounded text-[12px] font-semibold text-primary outline-none transition hover:underline focus-visible:ring-2 focus-visible:ring-primary/40"
         data-testid="view-onchain"
       >
         {label} <ArrowUpRight size={12} />
@@ -82,7 +82,7 @@ export function OnChainDetail({ refData, label = "View on-chain" }: { refData: O
                 <div className="flex items-center gap-2 text-sm font-semibold text-fg">
                   <ShieldCheck size={15} className="text-primary" /> {refData.label ?? "On-chain proof"}
                 </div>
-                <button type="button" onClick={() => setOpen(false)} className="rounded-md p-1 text-muted hover:bg-border/50" aria-label="Close"><X size={16} /></button>
+                <button type="button" onClick={() => setOpen(false)} className="rounded-md p-1 text-muted outline-none hover:bg-border/50 focus-visible:ring-2 focus-visible:ring-primary/40" aria-label="Close"><X size={16} /></button>
               </div>
               <div className="px-5 py-4">
                 <div className="mb-2 flex items-center gap-2">
@@ -97,10 +97,10 @@ export function OnChainDetail({ refData, label = "View on-chain" }: { refData: O
                   {refData.root ? <Row k="Merkle root" v={formatAddress(refData.root, 8, 6)} mono /> : null}
                   {refData.composeHash ? <Row k="Prover build hash" v={formatAddress(refData.composeHash, 8, 6)} mono /> : null}
                   {refData.verified && refData.verifier ? (
-                    <Row k="Verifier contract" v={<a className="inline-flex items-center gap-1 text-primary hover:underline" href={explorerContractUrl(refData.verifier, net)} target="_blank" rel="noreferrer">{formatAddress(refData.verifier, 6, 4)} <ArrowUpRight size={11} /></a>} />
+                    <Row k="Verifier contract" v={<a className="inline-flex items-center gap-1 rounded text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40" href={explorerContractUrl(refData.verifier, net)} target="_blank" rel="noreferrer">{formatAddress(refData.verifier, 6, 4)} <ArrowUpRight size={11} /></a>} />
                   ) : null}
                   {refData.verified && refData.txHash ? (
-                    <Row k="Transaction" v={<a className="inline-flex items-center gap-1 text-primary hover:underline" href={explorerTxUrl(refData.txHash, net)} target="_blank" rel="noreferrer">{formatAddress(refData.txHash, 6, 4)} <ArrowUpRight size={11} /></a>} />
+                    <Row k="Transaction" v={<a className="inline-flex items-center gap-1 rounded text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40" href={explorerTxUrl(refData.txHash, net)} target="_blank" rel="noreferrer">{formatAddress(refData.txHash, 6, 4)} <ArrowUpRight size={11} /></a>} />
                   ) : null}
                 </div>
                 <p className="mt-3 text-[11.5px] leading-relaxed text-muted">

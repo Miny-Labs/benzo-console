@@ -246,11 +246,11 @@ export function Pay() {
                       : "Payment created."}
               </span>
               {result.status === "needs_approval" ? (
-                <button onClick={() => nav("/approvals")} className="inline-flex flex-none items-center gap-1 font-semibold text-primary hover:underline">
+                <button onClick={() => nav("/approvals")} className="inline-flex flex-none items-center gap-1 rounded font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40">
                   Approvals <ArrowRight size={13} />
                 </button>
               ) : result.unpayable ? (
-                <button onClick={() => nav("/contractors")} className="inline-flex flex-none items-center gap-1 font-semibold text-primary hover:underline">
+                <button onClick={() => nav("/contractors")} className="inline-flex flex-none items-center gap-1 rounded font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40">
                   Contractors <ArrowRight size={13} />
                 </button>
               ) : null}
