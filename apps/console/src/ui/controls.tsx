@@ -15,8 +15,10 @@ import { AnimatePresence, motion, spring } from "./motion";
 // ---------------------------------------------------------------- form fields
 
 const fieldCls =
-  "w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted " +
+  "w-full rounded-lg border border-border bg-bg px-3 text-sm text-fg placeholder:text-muted " +
   "outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50";
+/** 44px control height for single-line inputs/selects (multiline uses its own vertical padding). */
+const controlSizeCls = "h-11";
 
 export function Field({
   label, hint, error, htmlFor, children,
@@ -34,14 +36,14 @@ export function Field({
 export function Input({ label, hint, error, ...props }:
   { label?: string; hint?: ReactNode; error?: string } & InputHTMLAttributes<HTMLInputElement>) {
   const id = useId();
-  const input = <input id={id} className={`${fieldCls} ${error ? "border-danger" : ""}`} {...props} />;
+  const input = <input id={id} className={`${fieldCls} ${controlSizeCls} ${error ? "border-danger" : ""}`} {...props} />;
   return label || hint || error ? <Field label={label} hint={hint} error={error} htmlFor={id}>{input}</Field> : input;
 }
 
 export function Textarea({ label, hint, error, ...props }:
   { label?: string; hint?: ReactNode; error?: string } & TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const id = useId();
-  const el = <textarea id={id} className={`${fieldCls} min-h-[80px] ${error ? "border-danger" : ""}`} {...props} />;
+  const el = <textarea id={id} className={`${fieldCls} py-2.5 min-h-[80px] ${error ? "border-danger" : ""}`} {...props} />;
   return label || hint || error ? <Field label={label} hint={hint} error={error} htmlFor={id}>{el}</Field> : el;
 }
 
@@ -50,7 +52,7 @@ export function Select({ label, hint, error, children, ...props }:
   const id = useId();
   const el = (
     <div className="relative">
-      <select id={id} className={`${fieldCls} appearance-none pr-9 ${error ? "border-danger" : ""}`} {...props}>
+      <select id={id} className={`${fieldCls} ${controlSizeCls} appearance-none pr-9 ${error ? "border-danger" : ""}`} {...props}>
         {children}
       </select>
       <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" />
@@ -110,6 +112,10 @@ export function Modal({
 
 // ---------------------------------------------------------------- table
 
+/** Text alignment for a cell — `right` for amount columns, `left` (default) otherwise. */
+type CellAlign = "left" | "right" | "center";
+const ALIGN: Record<CellAlign, string> = { left: "text-left", right: "text-right", center: "text-center" };
+
 export function Table({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border">
@@ -117,14 +123,18 @@ export function Table({ children, className = "" }: { children: ReactNode; class
     </div>
   );
 }
-export function Th({ children, className = "" }: { children?: ReactNode; className?: string }) {
-  return <th className={`bg-bg px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted ${className}`}>{children}</th>;
+/**
+ * Header cell — the 12px status/table-label treatment. `align="right"` for the amount
+ * column; put row actions in the rightmost column (align right or center).
+ */
+export function Th({ children, align = "left", className = "" }: { children?: ReactNode; align?: CellAlign; className?: string }) {
+  return <th className={`bg-bg px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.05em] text-muted ${ALIGN[align]} ${className}`}>{children}</th>;
 }
-export function Td({ children, className = "" }: { children?: ReactNode; className?: string }) {
-  return <td className={`border-t border-border px-4 py-2.5 text-fg ${className}`}>{children}</td>;
+export function Td({ children, align = "left", className = "" }: { children?: ReactNode; align?: CellAlign; className?: string }) {
+  return <td className={`border-t border-border px-4 py-2.5 text-fg ${ALIGN[align]} ${className}`}>{children}</td>;
 }
-export function Tr({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
-  return <tr onClick={onClick} className={onClick ? "cursor-pointer hover:bg-border/30" : ""}>{children}</tr>;
+export function Tr({ children, onClick, className = "" }: { children: ReactNode; onClick?: () => void; className?: string }) {
+  return <tr onClick={onClick} className={`${onClick ? "cursor-pointer hover:bg-border/30" : ""} ${className}`}>{children}</tr>;
 }
 
 // ---------------------------------------------------------------- tabs

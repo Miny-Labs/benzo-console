@@ -7,8 +7,24 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { BENZO_EXPLORER_BY_NETWORK, chainForNetwork, networkFromEnv, type BenzoNetwork } from "@benzo/config";
-import { NETWORK, NETWORK_LABEL_BY_NETWORK } from "../lib/network";
+import { NETWORK, NETWORK_ENV_BY_NETWORK, NETWORK_LABEL_BY_NETWORK, type NetworkEnv } from "../lib/network";
 import { AvalancheMark, Logo } from "../ui/Logo";
+
+/** Amber (testnet / permissioned L1) vs green (real-money mainnet) chrome. */
+function envToneCls(env: NetworkEnv): string {
+  return env.tone === "success"
+    ? "border-success/25 bg-success/10 text-[#1d7a52]"
+    : "border-warning/30 bg-warning/12 text-[#9a6b12]";
+}
+
+/** Explicit environment badge for each option in the picker — Testnet / Mainnet / Permissioned L1. */
+function EnvBadge({ env }: { env: NetworkEnv }) {
+  return (
+    <span className={`flex-none rounded-full border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${envToneCls(env)}`}>
+      {env.badge}
+    </span>
+  );
+}
 
 const NETWORKS: BenzoNetwork[] = ["fuji", "benzonet", "avalanche"];
 const STORAGE_KEY = "benzo.console.network";
@@ -67,6 +83,13 @@ export function NetworkMenu({ live }: { live: boolean }) {
   }, [open]);
 
   const info = chainInfo(network);
+  const env = NETWORK_ENV_BY_NETWORK[network];
+  // Chrome by ENVIRONMENT (never by liveness): amber for testnet / permissioned L1,
+  // green only for real-money mainnet. A green "Live" chip on a testnet is the bug we
+  // are killing. Liveness is a separate axis: a subtle heartbeat dot when connected,
+  // and a red "Offline · …" state when the chain is unreachable.
+  const chipTone = live ? envToneCls(env) : "border-danger/30 bg-danger/10 text-[#b4232a]";
+  const chipLabel = live ? env.chip : `Offline · ${env.badge}`;
 
   return (
     <div className="relative flex-none" ref={ref}>
@@ -75,13 +98,12 @@ export function NetworkMenu({ live }: { live: boolean }) {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         data-testid="network-menu-trigger"
-        title="Switch network"
-        className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 ${
-          live ? "border-success/25 bg-success/10 text-[#1d7a52]" : "border-warning/30 bg-warning/12 text-[#9a6b12]"
-        }`}
+        title={live ? `Connected · ${env.detail}` : "Chain unavailable"}
+        className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 ${chipTone}`}
       >
-        <AvalancheMark size={13} className="flex-none" />
-        {live ? `Live · ${info.label}` : "Chain unavailable"}
+        <Mark network={network} size={16} />
+        <span className="truncate">{chipLabel}</span>
+        {live ? <span className={`h-1.5 w-1.5 flex-none rounded-full ${env.tone === "success" ? "bg-success" : "bg-warning"} animate-pulse`} /> : null}
         <ChevronDown size={13} className={`opacity-60 transition ${open ? "rotate-180" : ""}`} />
       </button>
       <AnimatePresence>
@@ -112,7 +134,10 @@ export function NetworkMenu({ live }: { live: boolean }) {
                   >
                     <Mark network={n} size={24} />
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-semibold text-fg">{ci.label}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-[13px] font-semibold text-fg">{ci.label}</span>
+                        <EnvBadge env={NETWORK_ENV_BY_NETWORK[n]} />
+                      </div>
                       <div className="truncate text-[11px] text-muted">{ci.kind}</div>
                     </div>
                     {on ? <Check size={15} className="flex-none text-primary" /> : null}

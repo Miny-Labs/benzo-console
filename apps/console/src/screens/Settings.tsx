@@ -11,7 +11,7 @@ import type { Integration } from "@benzo/types";
 import { api, type OrgInvite, type RecoveryStatus } from "../lib/api";
 import { useConsole } from "../lib/store";
 import { ROLES, roleHas, PERMISSION_GROUPS, ROLE_BLURB } from "../lib/permissions";
-import { friendlyError, fmtUsd, minorToUsdc, usdcToMinor } from "../lib/format";
+import { friendlyError, fmtUsd, initials, minorToUsdc, usdcToMinor } from "../lib/format";
 import { Screen, Stagger, motion } from "../ui/motion";
 import { Button, Card, CopyButton, Input, Modal, Pill, Select, Skeleton, StatusPill, useToast } from "../ui/primitives";
 
@@ -232,7 +232,7 @@ function TeamCard() {
           members.map((m) => (
             <div key={m.id} className="flex items-center gap-3 px-5 py-3 text-[13.5px]">
               <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-ink text-[11px] font-bold text-white">
-                {(m.name ?? m.email).slice(0, 2).toUpperCase()}
+                {initials(m.name ?? m.email)}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{m.name ?? m.email}</div>

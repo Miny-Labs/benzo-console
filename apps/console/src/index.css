@@ -16,14 +16,22 @@
   --color-surface: oklch(0.997 0.0015 106);
   --color-fg: oklch(0.29 0.028 252);
   --color-ink: oklch(0.24 0.03 252);
-  --color-muted: oklch(0.55 0.012 258);
-  --color-border: oklch(0.29 0.028 252 / 0.1);
+  /* Secondary text — darkened for legibility (was 0.55; faint secondary copy was
+     the weak link in the visual system). */
+  --color-muted: oklch(0.5 0.014 258);
+  /* Card/table hairline — a touch more present so a Card reads as a real edge,
+     not a ghost (was /0.1). */
+  --color-border: oklch(0.29 0.028 252 / 0.13);
   --color-primary: oklch(0.553 0.207 292);
   --color-success: oklch(0.66 0.13 159);
   --color-warning: oklch(0.76 0.13 75);
   --color-danger: oklch(0.61 0.18 28);
   --color-shielded: oklch(0.553 0.207 292);
   --color-canvas-outer: oklch(0.93 0.006 100);
+  /* Disabled controls are NEUTRAL GRAY — never a low-opacity tint of the primary
+     purple (a faded-purple button reads as "still actionable"). */
+  --color-disabled: oklch(0.92 0.004 258);
+  --color-disabled-fg: oklch(0.62 0.01 258);
 
   --radius-card: 0.75rem;
   --shadow-glow: 0 4px 18px oklch(0.553 0.207 292 / 0.26);
@@ -48,6 +56,29 @@ body {
 }
 .tnum {
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Shared type scale (calm, dense enterprise-finance). Additive utility classes —
+ * screens adopt them in later waves; nothing here changes existing markup. Sizes are
+ * px/px (font/line). Spacing uses the standard 4/8/12/16/24/32/48/64 Tailwind steps:
+ *   title→subtitle 4-6 · subtitle→section 24 · between sections 24-32 · card padding
+ *   24 (compact 20) · card gap 12-16 · label→input 8 · group→group 20-24.
+ */
+.t-page-title { font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -0.01em; }
+.t-hero { font-size: 42px; line-height: 50px; font-weight: 700; letter-spacing: -0.015em; }
+.t-summary { font-size: 30px; line-height: 38px; font-weight: 600; letter-spacing: -0.01em; }
+.t-section { font-size: 19px; line-height: 27px; font-weight: 600; }
+.t-card-title { font-size: 16px; line-height: 24px; font-weight: 600; }
+.t-body { font-size: 15px; line-height: 22px; }
+.t-secondary { font-size: 14px; line-height: 20px; color: var(--color-muted); }
+.t-helper { font-size: 13px; line-height: 18px; color: var(--color-muted); }
+.t-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;

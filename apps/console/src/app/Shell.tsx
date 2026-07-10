@@ -26,6 +26,7 @@ import { CommandBar } from "./CommandBar";
 import { AvalancheMark, Logo } from "../ui/Logo";
 import { NetworkMenu } from "./NetworkMenu";
 import { useConsole } from "../lib/store";
+import { initials } from "../lib/format";
 import { Dashboard } from "../screens/Dashboard";
 import { Approvals } from "../screens/Approvals";
 import { Contractors } from "../screens/Contractors";
@@ -44,14 +45,14 @@ function NavItem({ to, icon: Icon, label, badge }: { to: string; icon: typeof Us
       to={to}
       end={to === "/"}
       className={({ isActive }) =>
-        `group flex items-center gap-3 rounded-[9px] px-2.5 py-2 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 ${
+        `group flex min-h-[40px] items-center gap-3 rounded-[9px] px-2.5 py-2 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 ${
           isActive ? "bg-primary/[0.07] text-primary" : "text-[#3a4452] hover:bg-[#f4f3ef]"
         }`
       }
     >
       {({ isActive }) => (
         <>
-          <Icon size={18} className={isActive ? "text-primary" : "text-[#8a9099]"} />
+          <Icon size={20} className={isActive ? "text-primary" : "text-[#8a9099]"} />
           {label}
           {badge ? <span className="ml-auto rounded-full bg-primary px-1.5 py-px text-[11px] font-bold text-white">{badge}</span> : null}
         </>
@@ -83,12 +84,8 @@ export function Shell() {
   }, [menu]);
   // Close any open popover on route change.
   useEffect(() => setMenu(null), [loc.pathname]);
-  const initials = (session?.member.name ?? "JD")
-    .split(" ")
-    .map((s) => s[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  // Shared initials helper so the top-bar avatar and Settings/team never disagree.
+  const avatarInitials = initials(session?.member.name, "JD");
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[var(--color-canvas-outer)] p-0 sm:p-6">
@@ -190,25 +187,25 @@ export function Shell() {
                 ) : null}
               </AnimatePresence>
             </div>
-            <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-ink text-[12px] font-bold text-white">{initials}</div>
+            <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-ink text-[12px] font-bold text-white">{avatarInitials}</div>
           </div>
         </header>
 
         {/* body: sidebar nav + routed content */}
         <div className="flex flex-1 overflow-hidden">
           <aside className="flex w-[240px] flex-none flex-col gap-1 border-r border-border bg-surface px-3.5 py-4">
-            <NavItem to="/" icon={LayoutDashboard} label="Dashboard" />
-            <div className="mt-1" />
-            <Eyebrow>Pay</Eyebrow>
+            <Eyebrow>Overview</Eyebrow>
+            <NavItem to="/" icon={LayoutDashboard} label="Overview" />
+            <Eyebrow>Payments</Eyebrow>
             <NavItem to="/contractors" icon={Users} label="Contractors" />
             <NavItem to="/payroll" icon={Users} label="Payroll" />
-            <NavItem to="/invoices" icon={FileText} label="Invoices to pay" />
-            <NavItem to="/pay" icon={ArrowUpRight} label="Send & vendor pay" />
-            <Eyebrow>Control</Eyebrow>
+            <NavItem to="/invoices" icon={FileText} label="Invoices" />
+            <NavItem to="/pay" icon={ArrowUpRight} label="One-off payment" />
+            <Eyebrow>Operations</Eyebrow>
             <NavItem to="/approvals" icon={CheckCheck} label="Approvals" badge={pending || undefined} />
             <NavItem to="/treasury" icon={Wallet} label="Treasury" />
-            <Eyebrow>Share</Eyebrow>
-            <NavItem to="/grants" icon={ShieldCheck} label="Auditor grants" />
+            <Eyebrow>Compliance</Eyebrow>
+            <NavItem to="/grants" icon={ShieldCheck} label="Auditor access" />
             <NavItem to="/audit" icon={ScrollText} label="Audit log" />
             <div className="flex-1" />
             <NavItem to="/settings" icon={Settings} label="Settings & team" />
