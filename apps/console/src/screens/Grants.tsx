@@ -1,26 +1,52 @@
 /**
- * Auditor grants - issue a scoped viewing key so an auditor sees exactly the
- * in-scope notes (a corridor/period), nothing else, and revoke it on-chain. This
- * is the two-sided compliance story: private by default, disclosable on your terms.
+ * Auditor access — issue a scoped, read-only viewing key so an auditor sees exactly
+ * the in-scope notes (a corridor/period), nothing else, and revoke it on-chain. Two
+ * tabs: Access (the grant register + revoke) and Attestations (a network-verified
+ * period-total report). Private by default, disclosable on your terms.
  */
 import { useEffect, useReducer, useState } from "react";
-import { Download, Eye, FileCheck, Plus, ShieldCheck, XCircle } from "lucide-react";
+import { Download, FileCheck, Plus, ShieldCheck, XCircle } from "lucide-react";
 import type { DisclosureTier, ViewingGrant } from "@benzo/types";
 import { initialPaymentState, paymentReducer } from "@benzo/ui/payment-state";
 import { api, type OnChainRef } from "../lib/api";
 import { validateViewingGrantForm } from "../lib/grants";
 import { useConsole } from "../lib/store";
-import { fmtUsd, formatAddress, formatDate, friendlyError } from "../lib/format";
+import { fmtDate, fmtUsd, formatAddress, friendlyError } from "../lib/format";
 import { CeremonyRow } from "../ui/CeremonyRow";
-import { Screen, Stagger } from "../ui/motion";
+import { Screen } from "../ui/motion";
 import { OnChainDetail } from "../ui/onchain";
 import { SendCeremony, type CeremonyTitles } from "../ui/SendCeremony";
-import { Button, Card, EmptyState, Input, Modal, Pill, Select, Skeleton, StatusPill, useToast } from "../ui/primitives";
+import {
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  MetaPill,
+  Modal,
+  PageHeader,
+  Select,
+  Skeleton,
+  StatusPill,
+  Table,
+  Tabs,
+  Td,
+  Th,
+  Tr,
+  useToast,
+} from "../ui/primitives";
 
 type PeriodTotal = Awaited<ReturnType<typeof api.periodTotalAttestation>>;
+type TabId = "access" | "attestations";
+type AccessFilter = "active" | "inactive";
 
-// Prove-flavored copy for the shared send ceremony: "disclose on your terms" is the
-// eERC payoff, so the period-total attestation gets its own full-screen sequence.
+/** De-jargoned disclosure tiers — no bare "outgoing"/"incoming"/"full" in the UI. */
+const TIER_LABEL: Record<DisclosureTier, string> = {
+  full: "Full access",
+  incoming: "Incoming payments",
+  outgoing: "Outgoing payments",
+};
+
+// Prove-flavored copy for the shared send ceremony.
 const ATTEST_TITLES: CeremonyTitles = {
   encrypt: { title: "Loading the period's notes", sub: "Gathering the in-scope notes and building the witness" },
   settle: { title: "Folding the ORGSUM proof", sub: "Proving the total on-chain without revealing a single salary" },
@@ -32,16 +58,15 @@ export function Grants() {
   const toast = useToast();
   const { grants: savedGrants, accounts, refresh, loading } = useConsole();
   const [grants, setGrants] = useState<ViewingGrant[]>(savedGrants);
+  const [tab, setTab] = useState<TabId>("access");
+  const [accessFilter, setAccessFilter] = useState<AccessFilter>("active");
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ auditorName: "", auditorPubKey: "", tier: "outgoing" as DisclosureTier, label: "2026-Q2", accountId: "" });
   const [formError, setFormError] = useState<string | null>(null);
   const [period, setPeriod] = useState("2026-Q2");
   const [att, setAtt] = useState<PeriodTotal | null>(null);
-  // The attestation plays through the shared send ceremony (state machine, not a
-  // timer), so "generate auditor packet" is one full-screen animated action.
   const [attState, dispatchAtt] = useReducer(paymentReducer, initialPaymentState);
-  // Confirm gate for an irreversible on-chain revoke that cuts auditor access.
   const [confirmRevoke, setConfirmRevoke] = useState<{ id: string; auditorName: string } | null>(null);
   const [revoking, setRevoking] = useState(false);
 
@@ -49,11 +74,12 @@ export function Grants() {
     setGrants(savedGrants);
   }, [savedGrants]);
 
-  // Records export (Z2): generate a network-verified period-total attestation -
-  // a real ORGSUM proof the auditor/tax office can re-verify on-chain. The
-  // individual salaries that make up the total are never disclosed. The ceremony
-  // is a slave to the result: it only reaches "verified" if the proof checked
-  // on-chain, and fails clearly otherwise (privacy claim === on-chain proof).
+  const activeGrants = grants.filter((g) => g.status === "active");
+  const inactiveGrants = grants.filter((g) => g.status !== "active");
+  const rows = accessFilter === "active" ? activeGrants : inactiveGrants;
+
+  // Records export: a real ORGSUM proof the auditor/tax office can re-verify on-chain.
+  // The ceremony only reaches "verified" if the proof checked on-chain.
   async function exportPeriodTotal() {
     dispatchAtt({ type: "START" });
     setAtt(null);
@@ -61,7 +87,6 @@ export function Grants() {
       const r = await api.periodTotalAttestation(period);
       setAtt(r);
       if (r.onChain) {
-        // Batched jump; SendCeremony's flooring still walks encrypt→settle→verify.
         dispatchAtt({ type: "WITNESS_READY" });
         dispatchAtt({ type: "PROOF_READY" });
         dispatchAtt({ type: "SUBMITTED", txHash: r.root ?? "" });
@@ -113,7 +138,7 @@ export function Grants() {
         expiry: new Date(Date.now() + 90 * 86_400_000).toISOString(),
       });
       setGrants((prev) => [grant, ...prev.filter((g) => g.id !== grant.id)]);
-      toast({ title: "Viewing grant issued", tone: "success" });
+      toast({ title: "Auditor access granted", tone: "success" });
       setOpen(false);
       void refresh();
     } catch (e) {
@@ -128,7 +153,7 @@ export function Grants() {
     try {
       const grant = await api.revokeGrant(id);
       setGrants((prev) => prev.map((g) => (g.id === grant.id ? grant : g)));
-      toast({ title: "Grant revoked", tone: "muted" });
+      toast({ title: "Access revoked", tone: "muted" });
       setConfirmRevoke(null);
       void refresh();
     } catch (e) {
@@ -138,9 +163,6 @@ export function Grants() {
     }
   }
 
-  // The attestation already carries everything needed to re-verify the ORGSUM
-  // proof on-chain (the "P0 irony" the audit flagged: the data was there, the
-  // drill-down wasn't). Surface it as an OnChainRef.
   const attRef: OnChainRef | undefined =
     att?.live && att.vkId
       ? {
@@ -194,91 +216,153 @@ export function Grants() {
             : undefined
         }
       />
-      <div className="mb-5 flex items-start justify-between">
-        <div>
-          <h1 className="font-display text-2xl">Auditor grants</h1>
-          <p className="mt-1 text-[13.5px] text-muted">Read-only access for auditors. They see exactly what you grant, and nothing else.</p>
-        </div>
-        <Button onClick={() => setOpen(true)} data-testid="new-grant">
-          <Plus size={15} /> New grant
-        </Button>
+
+      <PageHeader
+        title="Auditor access"
+        subtitle="Read-only access for auditors. They see exactly what you grant, and nothing else."
+        action={
+          tab === "access" ? (
+            <Button onClick={() => setOpen(true)} data-testid="new-grant">
+              <Plus size={15} /> Grant access
+            </Button>
+          ) : undefined
+        }
+      />
+
+      <div className="mb-4">
+        <Tabs
+          items={[
+            { id: "access", label: "Access" },
+            { id: "attestations", label: "Attestations" },
+          ]}
+          active={tab}
+          onChange={setTab}
+        />
       </div>
 
-      <Card className="mb-5 p-5">
-        <div className="flex items-center gap-2 text-[14px] font-semibold">
-          <FileCheck size={16} className="text-primary" /> Period total for tax / audit
-        </div>
-        <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-muted">
-          Export a network-verified statement of what you paid out for a period, e.g. "Q2 = $X." The total is proven on-chain; the individual salaries behind it stay hidden. The file embeds the proof so your auditor can re-verify it independently.
-        </p>
-        <p className="mt-1.5 max-w-2xl text-[11.5px] leading-relaxed text-muted/80">
-          Soundness: this proves the disclosed notes sum to the stated total - not that the set is complete. It attests the total you claim, it does not detect a payout deliberately left out (completeness is bounded only by the authorized-key registry).
-        </p>
-        <div className="mt-4 flex items-end gap-3">
-          <div className="w-48">
-            <Input label="Period" placeholder="2026-Q2" value={period} onChange={(e) => setPeriod(e.target.value)} data-testid="att-period" />
+      {tab === "access" ? (
+        <>
+          <div className="mb-3 inline-flex rounded-lg border border-border p-0.5" role="group" aria-label="Filter grants by status">
+            {(["active", "inactive"] as AccessFilter[]).map((f) => (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={accessFilter === f}
+                onClick={() => setAccessFilter(f)}
+                data-testid={`access-filter-${f}`}
+                className={`rounded-md px-3 py-1 text-[13px] font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                  accessFilter === f ? "bg-primary/[0.08] text-primary" : "text-muted hover:text-fg"
+                }`}
+              >
+                {f === "active" ? `Active (${activeGrants.length})` : `Inactive (${inactiveGrants.length})`}
+              </button>
+            ))}
           </div>
-          <Button onClick={exportPeriodTotal} data-testid="gen-period-total">
-            <ShieldCheck size={15} /> Generate attestation
-          </Button>
-        </div>
-      </Card>
 
-      {loading ? (
-        <div className="space-y-4">
-          {[0, 1].map((i) => (
-            <Card key={i} className="flex items-center gap-4 p-5">
-              <Skeleton className="h-11 w-11 rounded-full" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-44" />
-                <Skeleton className="h-3 w-56" />
+          {loading ? (
+            <Card className="p-0">
+              <div className="divide-y divide-border">
+                {[0, 1].map((i) => (
+                  <div key={i} className="flex items-center gap-4 px-4 py-3.5">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="ml-auto h-5 w-16 rounded-full" />
+                  </div>
+                ))}
               </div>
-              <Skeleton className="h-5 w-16 rounded-full" />
             </Card>
-          ))}
-        </div>
-      ) : grants.length === 0 ? (
-        <EmptyState title="No grants yet" hint="Give an auditor read-only access to a specific period or account, and nothing else." />
+          ) : rows.length === 0 ? (
+            <EmptyState
+              title={accessFilter === "active" ? "No active auditor access" : "No revoked or expired access"}
+              hint={accessFilter === "active" ? "Grant an auditor read-only access to a specific period or account, and nothing else." : "Revoked and expired grants will appear here."}
+            />
+          ) : (
+            <Table>
+              <thead>
+                <tr>
+                  <Th>Auditor</Th>
+                  <Th>Scope</Th>
+                  <Th>Created</Th>
+                  <Th>Expires</Th>
+                  <Th>Status</Th>
+                  <Th align="right">Actions</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((g) => (
+                  <Tr key={g.id} data-testid="grant-row">
+                    <Td>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-fg">{g.auditorName}</span>
+                        <MetaPill>{TIER_LABEL[g.tier]}</MetaPill>
+                      </div>
+                    </Td>
+                    <Td>{g.scope.label ?? "All activity"}</Td>
+                    <Td>{fmtDate(g.createdAt)}</Td>
+                    <Td>{fmtDate(g.expiry)}</Td>
+                    <Td>
+                      <StatusPill status={g.status} />
+                    </Td>
+                    <Td align="right">
+                      {g.status === "active" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="!border-danger/40 !text-danger hover:!bg-danger/8"
+                          onClick={() => setConfirmRevoke({ id: g.id, auditorName: g.auditorName })}
+                          data-testid="revoke-grant"
+                        >
+                          <XCircle size={14} /> Revoke
+                        </Button>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </>
       ) : (
-        <Stagger className="space-y-4">
-          {grants.map((g, i) => (
-            <Stagger.Item key={g.id} index={i}>
-              <Card className="flex items-center gap-4 p-5">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <Eye size={20} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 text-[15px] font-semibold">
-                    <span className="truncate">{g.auditorName}</span>
-                    <Pill tone="shielded">{g.tier}</Pill>
-                  </div>
-                  <div className="mt-0.5 truncate text-[12.5px] text-muted">
-                    Scope: {g.scope.label ?? "All activity"} · expires {formatDate(g.expiry)}
-                  </div>
-                </div>
-                <StatusPill status={g.status} />
-                {g.status === "active" ? (
-                  <Button variant="outline" onClick={() => setConfirmRevoke({ id: g.id, auditorName: g.auditorName })} data-testid="revoke-grant">
-                    <XCircle size={15} /> Revoke
-                  </Button>
-                ) : null}
-              </Card>
-            </Stagger.Item>
-          ))}
-        </Stagger>
+        <Card>
+          <div className="flex items-center gap-2 t-card-title text-fg">
+            <FileCheck size={16} className="text-primary" /> Period total for tax / audit
+          </div>
+          <p className="t-helper mt-1 max-w-2xl">
+            Export a network-verified statement of what you paid out for a period — the total is proven on-chain; the individual
+            salaries stay hidden. The file embeds the proof so your auditor can re-verify it independently.
+          </p>
+          <div className="mt-4 flex items-end gap-3">
+            <div className="w-48">
+              <Input label="Period" placeholder="2026-Q2" value={period} onChange={(e) => setPeriod(e.target.value)} data-testid="att-period" />
+            </div>
+            <Button onClick={exportPeriodTotal} data-testid="gen-period-total">
+              <ShieldCheck size={15} /> Generate attestation
+            </Button>
+          </div>
+          <details className="mt-4 text-[12.5px] text-muted">
+            <summary className="cursor-pointer select-none font-medium text-fg outline-none focus-visible:ring-2 focus-visible:ring-primary/40">Technical details</summary>
+            <p className="mt-2 max-w-2xl leading-relaxed">
+              Soundness: this proves the disclosed notes sum to the stated total — not that the set is complete. It attests the total
+              you claim; it does not detect a payout deliberately left out (completeness is bounded only by the authorized-key registry).
+            </p>
+          </details>
+        </Card>
       )}
 
+      {/* Grant access modal */}
       <Modal
         open={open}
         onClose={() => { setOpen(false); setFormError(null); }}
-        title="Issue a viewing grant"
+        title="Grant auditor access"
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button loading={busy} onClick={create} data-testid="grant-submit">
-              <ShieldCheck size={15} /> Issue grant
+              <ShieldCheck size={15} /> Grant access
             </Button>
           </>
         }
@@ -287,9 +371,9 @@ export function Grants() {
           <Input label="Auditor name" placeholder="External Auditor" value={form.auditorName} onChange={(e) => { setFormError(null); setForm({ ...form, auditorName: e.target.value }); }} data-testid="grant-name" error={formError?.includes("name") ? formError : undefined} />
           <Input label="Auditor public key" placeholder="0x…" value={form.auditorPubKey} onChange={(e) => { setFormError(null); setForm({ ...form, auditorPubKey: e.target.value }); }} data-testid="grant-pubkey" error={formError?.includes("public key") ? formError : undefined} />
           <Select label="Disclosure tier" value={form.tier} onChange={(e) => setForm({ ...form, tier: e.target.value as DisclosureTier })}>
-            <option value="outgoing">Outgoing only</option>
-            <option value="incoming">Incoming only</option>
-            <option value="full">Full</option>
+            <option value="outgoing">Outgoing payments</option>
+            <option value="incoming">Incoming payments</option>
+            <option value="full">Full access</option>
           </Select>
           <Input label="What this covers" placeholder="Q2 payroll" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
           <Select label="Account scope" value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })}>
@@ -303,10 +387,11 @@ export function Grants() {
         </div>
       </Modal>
 
+      {/* Revoke confirm */}
       <Modal
         open={!!confirmRevoke}
         onClose={() => setConfirmRevoke(null)}
-        title="Revoke this viewing grant"
+        title="Revoke auditor access"
         footer={
           <>
             <Button variant="ghost" onClick={() => setConfirmRevoke(null)}>Cancel</Button>
@@ -317,7 +402,8 @@ export function Grants() {
         }
       >
         <p className="text-sm text-muted">
-          This revokes <b>{confirmRevoke?.auditorName}</b>'s read-only access on-chain, immediately. They'll lose visibility into the granted scope and you can't undo it - you'd have to issue a new grant.
+          This revokes <b>{confirmRevoke?.auditorName}</b>'s read-only access on-chain, immediately. They'll lose visibility into the
+          granted scope and you can't undo it — you'd have to grant new access.
         </p>
       </Modal>
     </Screen>

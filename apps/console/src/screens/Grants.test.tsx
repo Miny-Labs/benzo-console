@@ -48,6 +48,7 @@ describe("Grants period-total cinematic", () => {
     });
     render(<Grants />);
 
+    fireEvent.click(screen.getByText("Attestations"));
     fireEvent.click(screen.getByTestId("gen-period-total"));
     expect(screen.getByTestId("send-ceremony")).toBeInTheDocument();
     expect(apiMock.periodTotalAttestation).toHaveBeenCalledWith("2026-Q2");
@@ -66,6 +67,7 @@ describe("Grants period-total cinematic", () => {
     });
     render(<Grants />);
 
+    fireEvent.click(screen.getByText("Attestations"));
     fireEvent.click(screen.getByTestId("gen-period-total"));
 
     // Fails on its own headline; the reason shows in both the sub and the receipt.
