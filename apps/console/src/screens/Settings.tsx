@@ -166,9 +166,9 @@ function TeamCard() {
     }
   }
 
-  async function copyLink(link: string) {
+  async function copyLink(link: string, successMsg = "Invite link copied") {
     const ok = await copyTextToClipboard(link);
-    toast({ title: ok ? "Invite link copied" : "Couldn't copy the link", tone: ok ? "success" : "danger" });
+    toast({ title: ok ? successMsg : "Couldn't copy the link", tone: ok ? "success" : "danger" });
   }
 
   async function revoke(id: string) {
@@ -225,7 +225,7 @@ function TeamCard() {
           </thead>
           <tbody>
             {members.map((m) => {
-              const you = !!session?.member && (m.email === session.member.email || m.name === session.member.name);
+              const you = !!session?.member && m.id === session.member.id;
               return (
                 <Tr key={m.id}>
                   <Td>
@@ -261,7 +261,7 @@ function TeamCard() {
                 <Button size="sm" variant="ghost" onClick={() => void copyLink(inv.link)} data-testid="team-invite-copy">
                   Copy link
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => toast({ title: `Invite resent to ${inv.email ?? "teammate"}`, tone: "success" })} data-testid="team-invite-resend">
+                <Button size="sm" variant="ghost" onClick={() => void copyLink(inv.link, "Invite link copied — send it to your teammate")} data-testid="team-invite-resend">
                   <RefreshCw size={13} /> Resend
                 </Button>
                 <button
@@ -380,10 +380,23 @@ function ApprovalPolicyCard() {
     const releaseGate = policy.releaseGate ? { ...policy.releaseGate, minApprovers: n } : undefined;
     const steps = releaseGate ? policy.steps : policy.steps.map((s, i) => (i === 0 ? { ...s, minApprovers: n } : s));
 
-    // A session-local (unsaved) default has no persisted id yet.
+    // A freshly created default isn't in the store yet. Try to persist it; if this
+    // build has no create/upsert path (updatePolicy rejects an unknown id), keep it
+    // for the session and say so honestly — never claim it's activated when it isn't.
     if (!storePolicy && localPolicy) {
-      setLocalPolicy({ ...localPolicy, conditions, steps, releaseGate });
-      toast({ title: "Approval policy activated", tone: "success" });
+      const next = { ...localPolicy, conditions, steps, releaseGate };
+      setBusy(true);
+      try {
+        await api.updatePolicy(localPolicy.id, { conditions, steps, releaseGate });
+        await refresh();
+        setLocalPolicy(next);
+        toast({ title: "Approval policy activated", tone: "success" });
+      } catch {
+        setLocalPolicy(next);
+        toast({ title: "Session-only default — not yet saved to your workspace.", tone: "warning" });
+      } finally {
+        setBusy(false);
+      }
       return;
     }
     setBusy(true);
@@ -612,11 +625,11 @@ function IntegrationsCard({ integrations }: { integrations: Integration[] | null
                   </Td>
                   <Td align="right">
                     {it.status === "error" ? (
-                      <Button size="sm" variant="outline" onClick={() => toast({ title: `Reconnecting ${PROVIDER_LABEL[it.provider] ?? it.provider}…`, tone: "muted" })}>
+                      <Button size="sm" variant="outline" onClick={() => toast({ title: `${PROVIDER_LABEL[it.provider] ?? it.provider} reconnects through the API — not wired up in this build.`, tone: "muted" })}>
                         <RefreshCw size={13} /> Reconnect
                       </Button>
                     ) : it.status === "disconnected" ? (
-                      <Button size="sm" variant="outline" onClick={() => toast({ title: `Connecting ${PROVIDER_LABEL[it.provider] ?? it.provider}…`, tone: "muted" })}>
+                      <Button size="sm" variant="outline" onClick={() => toast({ title: `${PROVIDER_LABEL[it.provider] ?? it.provider} connects through the API — not wired up in this build.`, tone: "muted" })}>
                         Connect
                       </Button>
                     ) : (
