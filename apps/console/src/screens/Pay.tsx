@@ -14,7 +14,7 @@ import { initialPaymentState, isInFlight, paymentReducer, type PaymentEvent } fr
 import { api } from "../lib/api";
 import { useConsole } from "../lib/store";
 import { fmtUsd, formatAddress, usdcToMinor } from "../lib/format";
-import { NETWORK_ENV } from "../lib/network";
+import { NETWORK_ENV, NETWORK_LABEL } from "../lib/network";
 import { Screen } from "../ui/motion";
 import {
   Amount,
@@ -46,8 +46,7 @@ export function Pay() {
   const [paymentState, dispatchPayment] = useReducer(paymentReducer, initialPaymentState);
   const [result, setResult] = useState<{ status: string; onChain?: boolean; unpayable?: boolean } | null>(null);
 
-  const fromAccount = accounts.find((a) => a.id === fromAccountId);
-  const fromName = fromAccount?.name ?? "";
+  const fromName = accounts.find((a) => a.id === fromAccountId)?.name ?? "";
   const fromBalance = treasury?.accounts.find((a) => a.account.id === fromAccountId)?.balance?.amount;
   const payee = counterparties.find((c) => c.id === toCounterpartyId);
   const hasHandle = !!payee?.paymentAddress?.shielded;
@@ -167,7 +166,7 @@ export function Pay() {
               <div className="mt-1.5 flex items-center gap-2 text-[13px] text-muted">
                 <span>
                   Balance:{" "}
-                  {fromBalance ? <Amount minor={fromBalance} className="font-medium text-fg" /> : <span className="text-fg">Private</span>}
+                  {fromBalance != null ? <Amount minor={fromBalance} className="font-medium text-fg" /> : <span className="text-fg">Private</span>}
                 </span>
                 <ShieldedBadge label="Private" />
               </div>
@@ -298,7 +297,7 @@ export function Pay() {
                     : placeholder
                 }
               />
-              <SummaryRow label="Settlement" value="Settles on Avalanche in seconds" />
+              <SummaryRow label="Settlement" value={`Settles on ${NETWORK_LABEL} in seconds`} />
             </dl>
           </Card>
 
