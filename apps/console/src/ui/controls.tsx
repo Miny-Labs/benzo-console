@@ -6,7 +6,7 @@
  */
 import {
   createContext, useCallback, useContext, useEffect, useId, useState,
-  type ReactNode, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes,
+  type ReactNode, type HTMLAttributes, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes,
 } from "react";
 import { Check, ChevronDown, Copy, Loader2, X, ShieldCheck } from "lucide-react";
 import { copyTextToClipboard } from "../lib/clipboard";
@@ -133,8 +133,8 @@ export function Th({ children, align = "left", className = "" }: { children?: Re
 export function Td({ children, align = "left", className = "" }: { children?: ReactNode; align?: CellAlign; className?: string }) {
   return <td className={`border-t border-border px-4 py-2.5 text-fg ${ALIGN[align]} ${className}`}>{children}</td>;
 }
-export function Tr({ children, onClick, className = "" }: { children: ReactNode; onClick?: () => void; className?: string }) {
-  return <tr onClick={onClick} className={`${onClick ? "cursor-pointer hover:bg-border/30" : ""} ${className}`}>{children}</tr>;
+export function Tr({ children, onClick, className = "", ...rest }: { children: ReactNode; onClick?: () => void; className?: string } & Omit<HTMLAttributes<HTMLTableRowElement>, "onClick">) {
+  return <tr onClick={onClick} className={`${onClick ? "cursor-pointer hover:bg-border/30" : ""} ${className}`} {...rest}>{children}</tr>;
 }
 
 // ---------------------------------------------------------------- tabs
