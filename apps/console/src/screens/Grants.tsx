@@ -3,18 +3,30 @@
  * in-scope notes (a corridor/period), nothing else, and revoke it on-chain. This
  * is the two-sided compliance story: private by default, disclosable on your terms.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { Download, Eye, FileCheck, Plus, ShieldCheck, XCircle } from "lucide-react";
 import type { DisclosureTier, ViewingGrant } from "@benzo/types";
+import { initialPaymentState, paymentReducer } from "@benzo/ui/payment-state";
 import { api, type OnChainRef } from "../lib/api";
 import { validateViewingGrantForm } from "../lib/grants";
 import { useConsole } from "../lib/store";
-import { fmtUsd, formatDate, friendlyError } from "../lib/format";
-import { Screen, Proving, Reveal, Stagger } from "../ui/motion";
+import { fmtUsd, formatAddress, formatDate, friendlyError } from "../lib/format";
+import { CeremonyRow } from "../ui/CeremonyRow";
+import { Screen, Stagger } from "../ui/motion";
 import { OnChainDetail } from "../ui/onchain";
+import { SendCeremony, type CeremonyTitles } from "../ui/SendCeremony";
 import { Button, Card, EmptyState, Input, Modal, Pill, Select, Skeleton, StatusPill, useToast } from "../ui/primitives";
 
 type PeriodTotal = Awaited<ReturnType<typeof api.periodTotalAttestation>>;
+
+// Prove-flavored copy for the shared send ceremony: "disclose on your terms" is the
+// eERC payoff, so the period-total attestation gets its own full-screen sequence.
+const ATTEST_TITLES: CeremonyTitles = {
+  encrypt: { title: "Loading the period's notes", sub: "Gathering the in-scope notes and building the witness" },
+  settle: { title: "Folding the ORGSUM proof", sub: "Proving the total on-chain without revealing a single salary" },
+  verify: { title: "Verified on-chain — Merkle root revealed", sub: "Here's your downloadable, re-verifiable attestation" },
+  error: { title: "Couldn't prove the total" },
+};
 
 export function Grants() {
   const toast = useToast();
@@ -25,10 +37,10 @@ export function Grants() {
   const [form, setForm] = useState({ auditorName: "", auditorPubKey: "", tier: "outgoing" as DisclosureTier, label: "2026-Q2", accountId: "" });
   const [formError, setFormError] = useState<string | null>(null);
   const [period, setPeriod] = useState("2026-Q2");
-  const [busyAtt, setBusyAtt] = useState(false);
   const [att, setAtt] = useState<PeriodTotal | null>(null);
-  const [busyKyb, setBusyKyb] = useState(false);
-  const [kyb, setKyb] = useState<{ ok: boolean; onChain: boolean; jurisdiction: string; tier: string; ref?: OnChainRef } | null>(null);
+  // The attestation plays through the shared send ceremony (state machine, not a
+  // timer), so "generate auditor packet" is one full-screen animated action.
+  const [attState, dispatchAtt] = useReducer(paymentReducer, initialPaymentState);
   // Confirm gate for an irreversible on-chain revoke that cuts auditor access.
   const [confirmRevoke, setConfirmRevoke] = useState<{ id: string; auditorName: string } | null>(null);
   const [revoking, setRevoking] = useState(false);
@@ -37,44 +49,37 @@ export function Grants() {
     setGrants(savedGrants);
   }, [savedGrants]);
 
-  // KYB-as-ZK credential (Z7) - prove "verified business, jurisdiction Y, tier Z"
-  // on-chain (KYB) without revealing any documents; sybil-resistant.
-  async function proveKyb() {
-    setBusyKyb(true);
-    setKyb(null);
-    try {
-      const r = await api.proveKyb();
-      setKyb(r);
-      toast({ title: r.ok ? (r.onChain ? "KYB credential proven on-chain" : "KYB proof was not verified on-chain") : "Could not prove KYB", tone: r.ok && r.onChain ? "success" : "danger" });
-    } catch (e) {
-      toast({ title: friendlyError(e), tone: "danger" });
-    } finally {
-      setBusyKyb(false);
-    }
-  }
-
   // Records export (Z2): generate a network-verified period-total attestation -
   // a real ORGSUM proof the auditor/tax office can re-verify on-chain. The
-  // individual salaries that make up the total are never disclosed.
+  // individual salaries that make up the total are never disclosed. The ceremony
+  // is a slave to the result: it only reaches "verified" if the proof checked
+  // on-chain, and fails clearly otherwise (privacy claim === on-chain proof).
   async function exportPeriodTotal() {
-    setBusyAtt(true);
+    dispatchAtt({ type: "START" });
     setAtt(null);
     try {
       const r = await api.periodTotalAttestation(period);
       setAtt(r);
-      if (!r.live) toast({ title: "Not connected. Connect to generate a real attestation.", tone: "muted" });
-      else {
+      if (r.onChain) {
+        // Batched jump; SendCeremony's flooring still walks encrypt→settle→verify.
+        dispatchAtt({ type: "WITNESS_READY" });
+        dispatchAtt({ type: "PROOF_READY" });
+        dispatchAtt({ type: "SUBMITTED", txHash: r.root ?? "" });
+        dispatchAtt({ type: "CONFIRMED", result: r });
+      } else {
         const publicInputs = r.publicInputs ?? [];
-        const emptyPeriod = !r.onChain && publicInputs.length === 0 && Number(r.total ?? "0") === 0;
-        toast({
-          title: r.onChain ? "Total proven on-chain" : emptyPeriod ? "No period notes to attest yet" : "Attestation was not verified on-chain",
-          tone: r.onChain ? "success" : emptyPeriod ? "muted" : "danger",
+        const emptyPeriod = publicInputs.length === 0 && Number(r.total ?? "0") === 0;
+        dispatchAtt({
+          type: "FAIL",
+          error: !r.live
+            ? "Not connected. Connect to a live network to generate a real attestation."
+            : emptyPeriod
+              ? "No private payroll notes exist for this period yet, so there's nothing to prove on-chain."
+              : "The total was not verified on-chain, so no attestation was produced.",
         });
       }
     } catch (e) {
-      toast({ title: friendlyError(e), tone: "danger" });
-    } finally {
-      setBusyAtt(false);
+      dispatchAtt({ type: "FAIL", error: friendlyError(e) });
     }
   }
 
@@ -148,18 +153,47 @@ export function Grants() {
           publics: (att.publicInputs ?? []).map((v, i) => ({ k: i === 0 ? "Total (committed)" : `public[${i}]`, v })),
         }
       : undefined;
-  const attHasProofInputs = !!att?.publicInputs?.length;
-  const attIsEmptyPeriod = !!att && !att.onChain && !attHasProofInputs && Number(att.total ?? "0") === 0;
-  const attTone = att?.onChain ? "success" : attIsEmptyPeriod ? "neutral" : "danger";
-  const attClass = att?.onChain
-    ? "border-success/30 bg-success/8"
-    : attIsEmptyPeriod
-      ? "border-border bg-surface/70"
-      : "border-danger/30 bg-danger/8";
-  const attTextClass = att?.onChain ? "text-[#1d7a52]" : attIsEmptyPeriod ? "text-fg" : "text-[#b4232a]";
 
   return (
     <Screen>
+      <SendCeremony
+        open={attState.phase !== "idle"}
+        state={attState}
+        eyebrow="Period attestation"
+        titles={ATTEST_TITLES}
+        details={
+          <>
+            <CeremonyRow k="Period" v={att?.period ?? period} />
+            {att?.onChain && att.total ? <CeremonyRow k="Total (committed)" v={fmtUsd(att.total)} /> : null}
+          </>
+        }
+        receipt={
+          attState.phase === "confirmed" && att ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 font-semibold text-white">
+                <ShieldCheck size={15} /> {att.period}: {fmtUsd(att.total ?? "0")}
+              </div>
+              <div className="text-[12px] text-white/56">
+                The network verified this total against the ORGSUM proof. No single salary is revealed.
+              </div>
+              {att.root ? <div className="font-mono text-[12px] text-white/56">Merkle root {formatAddress(att.root, 8, 6)}</div> : null}
+              {attRef ? <OnChainDetail refData={attRef} /> : null}
+            </div>
+          ) : undefined
+        }
+        primaryAction={
+          attState.phase === "confirmed"
+            ? { label: (<><Download size={14} /> Download attestation (.json)</>), onClick: downloadAttestation }
+            : attState.phase === "failed"
+              ? { label: "Close", onClick: () => dispatchAtt({ type: "RESET" }), variant: "danger" }
+              : undefined
+        }
+        secondaryAction={
+          attState.phase === "confirmed"
+            ? { label: "Done", onClick: () => dispatchAtt({ type: "RESET" }), variant: "outline" }
+            : undefined
+        }
+      />
       <div className="mb-5 flex items-start justify-between">
         <div>
           <h1 className="font-display text-2xl">Auditor grants</h1>
@@ -184,63 +218,10 @@ export function Grants() {
           <div className="w-48">
             <Input label="Period" placeholder="2026-Q2" value={period} onChange={(e) => setPeriod(e.target.value)} data-testid="att-period" />
           </div>
-          {busyAtt ? (
-            <Proving steps={["Loading the period's notes", "Folding the ORGSUM proof", "Verifying the total on-chain"]} />
-          ) : (
-            <Button onClick={exportPeriodTotal} data-testid="gen-period-total">
-              <ShieldCheck size={15} /> Generate
-            </Button>
-          )}
-        </div>
-        {att?.live ? (
-          <Reveal tone={attTone} className={`mt-4 rounded-lg border px-4 py-3 ${attClass}`} data-testid="period-total-result">
-            <div className={`flex items-center gap-1.5 text-[13px] font-semibold ${attTextClass}`}>
-              <ShieldCheck size={14} /> {att.period}: {fmtUsd(att.total ?? "0")}
-            </div>
-            <div className="mt-1 text-[12px] text-muted">
-              {att.onChain
-                ? "The network verified this total against the ORGSUM proof. No single salary is revealed."
-                : attIsEmptyPeriod
-                  ? "No private payroll notes exist for this period yet, so there is nothing to prove on-chain."
-                  : "The total was not verified on-chain. No single salary is revealed."}
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              <Button variant="outline" onClick={downloadAttestation} data-testid="download-attestation">
-                <Download size={14} /> Download attestation (.json)
-              </Button>
-              {attRef ? <OnChainDetail refData={attRef} /> : null}
-            </div>
-          </Reveal>
-        ) : null}
-      </Card>
-
-      <Card className="mb-5 p-5">
-        <div className="flex items-center gap-2 text-[14px] font-semibold">
-          <ShieldCheck size={16} className="text-primary" /> KYB credential (zero-knowledge)
-        </div>
-        <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed text-muted">
-          Prove your business is verified, in a given jurisdiction and tier, to a counterparty or marketplace, without handing over a single document. The proof is checked on-chain and a one-time nullifier stops it being reused for duplicate entities.
-        </p>
-        {busyKyb ? (
-          <div className="mt-4">
-            <Proving steps={["Building the KYB witness", "Proving the credential", "Checking it on-chain"]} />
-          </div>
-        ) : (
-          <Button className="mt-4" onClick={proveKyb} data-testid="prove-kyb">
-            <ShieldCheck size={15} /> Prove KYB credential
+          <Button onClick={exportPeriodTotal} data-testid="gen-period-total">
+            <ShieldCheck size={15} /> Generate attestation
           </Button>
-        )}
-        {kyb?.ok ? (
-          <Reveal tone={kyb.onChain ? "success" : "danger"} className={`mt-4 rounded-lg border px-4 py-3 ${kyb.onChain ? "border-success/30 bg-success/8" : "border-danger/30 bg-danger/8"}`} data-testid="kyb-result">
-            <div className={`flex items-center gap-1.5 text-[13px] font-semibold ${kyb.onChain ? "text-[#1d7a52]" : "text-[#b4232a]"}`}>
-              <ShieldCheck size={14} /> Verified business · {kyb.jurisdiction} · tier {kyb.tier}
-            </div>
-            <div className="mt-1 text-[12px] text-muted">
-              {kyb.onChain ? "The network verified the credential. No documents were disclosed." : "The credential was not verified on-chain."}
-            </div>
-            {kyb.ref ? <div className="mt-3"><OnChainDetail refData={kyb.ref} /></div> : null}
-          </Reveal>
-        ) : null}
+        </div>
       </Card>
 
       {loading ? (
