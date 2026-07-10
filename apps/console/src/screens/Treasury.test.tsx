@@ -38,7 +38,7 @@ describe("Treasury", () => {
     fireEvent.click(screen.getByTestId("fund-confirm")); // fires the shield ceremony
 
     const ceremony = await screen.findByTestId("send-ceremony");
-    expect(ceremony).toHaveTextContent("Make private");
+    expect(ceremony).toHaveTextContent("Move to private balance");
     expect(screen.getByRole("heading", { name: "Encrypting your payment" })).toBeInTheDocument();
     expect(apiMock.fundTreasury).toHaveBeenCalledWith("0.20");
   });
