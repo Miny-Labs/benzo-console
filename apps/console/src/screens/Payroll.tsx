@@ -58,7 +58,11 @@ const hasFailed = (b: PayrollBatch) => b.lines.some((l) => l.status === "failed"
  */
 function requiredApprovers(b: PayrollBatch, policies: ApprovalPolicy[]): number {
   if (b.approvalProof?.threshold) return b.approvalProof.threshold;
-  const pol = (policies ?? [])[0];
+  const list = policies ?? [];
+  // No per-batch policy link exists, so predict from the policy that ALWAYS
+  // applies (empty conditions = catch-all) rather than arbitrary array order.
+  // The runtime still enforces the real threshold regardless.
+  const pol = list.find((p) => p.conditions.length === 0) ?? list[0];
   if (pol) return Math.max(1, pol.steps.reduce((s, st) => s + st.minApprovers, 0) + (pol.releaseGate?.minApprovers ?? 0));
   return 1;
 }
@@ -552,6 +556,8 @@ export function Payroll() {
             <p className="text-sm text-muted">
               {confirmRun.status === "processing" ? (
                 <>Retry the payouts that didn't settle on the <b>{monthYear(confirmRun.period)}</b> run. Successful lines are not paid twice.</>
+              ) : confirmRun.status === "approved" ? (
+                <>All approvals are already in for the <b>{monthYear(confirmRun.period)}</b> run. This settles the real on-chain payouts and <b>can't be undone</b>.</>
               ) : settlesOnApprove(confirmRun, policies) ? (
                 <>This is your final approval for the <b>{monthYear(confirmRun.period)}</b> run. It proves funded, policy, computation and approval, then settles real on-chain payouts and <b>can't be undone</b>.</>
               ) : (
@@ -643,7 +649,7 @@ function TechnicalDetails({ batch, refs }: { batch: PayrollBatch; refs?: RunRefs
           {a ? (
             <TechRow
               label="Approval policy satisfied"
-              hint={`${a.approvers}-of-${a.memberCount} distinct approvers signed anonymously (ORGAUTH) - which ones stays private.`}
+              hint={`${a.approvers}-of-${a.memberCount} distinct approvers signed anonymously (ORGAUTH) - which ones stay private.`}
               verified={!!a.approved && !!a.onChain}
               refData={refs?.approval}
             />
