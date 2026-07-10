@@ -13,8 +13,9 @@ export * from "./controls";
  * that already sets its own padding is left exactly as-is).
  */
 export function Card({ children, className = "", compact, ...rest }: { children: ReactNode; className?: string; compact?: boolean } & HTMLAttributes<HTMLDivElement>) {
-  // Only apply the default padding when the caller hasn't set its own (p-/px-/py-/pt-…).
-  const hasPadding = /(^|\s)p[xytrbl]?-/.test(className);
+  // Only apply the default padding when the caller hasn't set its own (p-/px-/py-/pt-…),
+  // including responsive variants like `sm:p-4` (where `p` follows a `:`).
+  const hasPadding = /(?:^|[\s:])p[xytrbl]?-/.test(className);
   const pad = hasPadding ? "" : compact ? "p-5" : "p-6";
   return (
     <div

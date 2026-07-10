@@ -54,8 +54,15 @@ function Mark({ network, size }: { network: BenzoNetwork; size: number }) {
 
 export function NetworkMenu({ live }: { live: boolean }) {
   const [network, setNetwork] = useState<BenzoNetwork>(() => {
-    const stored = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-    return stored ? networkFromEnv(stored) : NETWORK;
+    // Defensive read: a tampered / stale localStorage value (older key format)
+    // must not throw out of the initializer and crash the whole shell — fall
+    // back to the build-time NETWORK, matching the guarded write below.
+    try {
+      const stored = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+      return stored ? networkFromEnv(stored) : NETWORK;
+    } catch {
+      return NETWORK;
+    }
   });
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -83,7 +90,12 @@ export function NetworkMenu({ live }: { live: boolean }) {
   }, [open]);
 
   const info = chainInfo(network);
-  const env = NETWORK_ENV_BY_NETWORK[network];
+  // SAFETY: the persistent chip (tone, label, heartbeat) is locked to the
+  // BUILD-TIME `NETWORK` — never the user's dropdown selection. The dropdown only
+  // browses other networks' chain details (id/RPC/explorer); browsing to
+  // "Avalanche" on a Fuji build must NOT flip the safety signal to green while the
+  // app is still talking to the testnet. `env` here is the real environment.
+  const env = NETWORK_ENV_BY_NETWORK[NETWORK];
   // Chrome by ENVIRONMENT (never by liveness): amber for testnet / permissioned L1,
   // green only for real-money mainnet. A green "Live" chip on a testnet is the bug we
   // are killing. Liveness is a separate axis: a subtle heartbeat dot when connected,
@@ -101,7 +113,7 @@ export function NetworkMenu({ live }: { live: boolean }) {
         title={live ? `Connected · ${env.detail}` : "Chain unavailable"}
         className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12.5px] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 ${chipTone}`}
       >
-        <Mark network={network} size={16} />
+        <Mark network={NETWORK} size={16} />
         <span className="truncate">{chipLabel}</span>
         {live ? <span className={`h-1.5 w-1.5 flex-none rounded-full ${env.tone === "success" ? "bg-success" : "bg-warning"} animate-pulse`} /> : null}
         <ChevronDown size={13} className={`opacity-60 transition ${open ? "rotate-180" : ""}`} />
