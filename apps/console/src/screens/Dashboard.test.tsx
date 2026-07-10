@@ -47,7 +47,7 @@ describe("Dashboard", () => {
     expect(screen.queryByText("$123.00")).not.toBeInTheDocument();
   });
 
-  it("offers first-run routes for treasury, invites, policies, contractors, and payroll", () => {
+  it("offers first-run routes for treasury, team invites, approval policy, contractors, and payroll", () => {
     function PathProbe() {
       return <span data-testid="path">{useLocation().pathname}</span>;
     }
@@ -63,10 +63,11 @@ describe("Dashboard", () => {
 
     fireEvent.click(screen.getByTestId("firstrun-fund"));
     expect(screen.getByTestId("path")).toHaveTextContent("/treasury");
+    // Team invites + the approval-policy control both live on Settings now.
     fireEvent.click(screen.getByTestId("firstrun-approver"));
-    expect(screen.getByTestId("path")).toHaveTextContent("/invites");
+    expect(screen.getByTestId("path")).toHaveTextContent("/settings");
     fireEvent.click(screen.getByTestId("firstrun-policy"));
-    expect(screen.getByTestId("path")).toHaveTextContent("/policies");
+    expect(screen.getByTestId("path")).toHaveTextContent("/settings");
     fireEvent.click(screen.getByTestId("firstrun-contractors"));
     expect(screen.getByTestId("path")).toHaveTextContent("/contractors");
     fireEvent.click(screen.getByTestId("firstrun-payroll"));

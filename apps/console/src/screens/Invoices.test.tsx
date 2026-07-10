@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Invoices } from "./Invoices";
 
@@ -19,7 +19,6 @@ const apiMock = vi.hoisted(() => ({
     requestBody: body,
   })),
   payInvoice: vi.fn(),
-  netInvoices: vi.fn(),
 }));
 
 vi.mock("../lib/api", () => ({ api: apiMock }));
@@ -78,22 +77,5 @@ describe("Invoices", () => {
     });
     await waitFor(() => expect(refreshMock).toHaveBeenCalledOnce());
     expect(localStorage.getItem("benzo.console.localInvoices")).toBeNull();
-  });
-
-  it("blocks invalid private netting inputs before calling the API", () => {
-    render(<Invoices />);
-
-    fireEvent.change(screen.getByTestId("net-we-owe"), { target: { value: "" } });
-    fireEvent.change(screen.getByTestId("net-they-owe"), { target: { value: "0.18" } });
-    fireEvent.click(screen.getByTestId("net-invoices"));
-
-    expect(apiMock.netInvoices).not.toHaveBeenCalled();
-    expect(screen.getByTestId("net-error")).toHaveTextContent("Enter both invoice totals");
-
-    fireEvent.change(screen.getByTestId("net-we-owe"), { target: { value: "-1" } });
-    fireEvent.click(screen.getByTestId("net-invoices"));
-
-    expect(apiMock.netInvoices).not.toHaveBeenCalled();
-    expect(screen.getByTestId("net-error")).toHaveTextContent("Use positive USDC amounts");
   });
 });

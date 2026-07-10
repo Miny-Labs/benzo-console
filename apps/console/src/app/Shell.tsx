@@ -15,7 +15,6 @@ import {
   Settings,
   ShieldCheck,
   Users,
-  UserPlus,
   Wallet,
   CheckCheck,
 } from "lucide-react";
@@ -29,7 +28,6 @@ import { useConsole } from "../lib/store";
 import { NETWORK_LABEL } from "../lib/network";
 import { Dashboard } from "../screens/Dashboard";
 import { Approvals } from "../screens/Approvals";
-import { Policies } from "../screens/Policies";
 import { Contractors } from "../screens/Contractors";
 import { Invoices } from "../screens/Invoices";
 import { Payroll } from "../screens/Payroll";
@@ -37,7 +35,6 @@ import { Pay } from "../screens/Pay";
 import { Treasury } from "../screens/Treasury";
 import { Grants } from "../screens/Grants";
 import { AuditLog } from "../screens/AuditLog";
-import { Invites } from "../screens/Invites";
 import { InviteClaim } from "../screens/InviteClaim";
 import { SettingsScreen } from "../screens/Settings";
 
@@ -216,10 +213,8 @@ export function Shell() {
             <NavItem to="/payroll" icon={Users} label="Payroll" />
             <NavItem to="/invoices" icon={FileText} label="Invoices to pay" />
             <NavItem to="/pay" icon={ArrowUpRight} label="Send & vendor pay" />
-            <NavItem to="/invites" icon={UserPlus} label="Invites" />
             <Eyebrow>Control</Eyebrow>
             <NavItem to="/approvals" icon={CheckCheck} label="Approvals" badge={pending || undefined} />
-            <NavItem to="/policies" icon={Settings} label="Approval policies" />
             <NavItem to="/treasury" icon={Wallet} label="Treasury" />
             <Eyebrow>Share</Eyebrow>
             <NavItem to="/grants" icon={ShieldCheck} label="Auditor grants" />
@@ -233,7 +228,6 @@ export function Shell() {
               <Routes location={loc} key={loc.pathname}>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/approvals" element={<Approvals />} />
-                <Route path="/policies" element={<Policies />} />
                 <Route path="/contractors" element={<Contractors />} />
                 <Route path="/payroll" element={<Payroll />} />
                 <Route path="/invoices" element={<Invoices />} />
@@ -241,7 +235,6 @@ export function Shell() {
                 <Route path="/treasury" element={<Treasury />} />
                 <Route path="/grants" element={<Grants />} />
                 <Route path="/audit" element={<AuditLog />} />
-                <Route path="/invites" element={<Invites />} />
                 <Route path="/claim" element={<InviteClaim />} />
                 <Route path="/settings" element={<SettingsScreen />} />
                 <Route path="*" element={<Dashboard />} />
