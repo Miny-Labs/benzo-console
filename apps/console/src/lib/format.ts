@@ -57,10 +57,52 @@ export function formatAddress(addr: string, head = 4, tail = 4): string {
   return addr.length <= head + tail + 1 ? addr : `${addr.slice(0, head)}…${addr.slice(-tail)}`;
 }
 
-export function formatDate(ts: number | string | Date): string {
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+function toDate(ts: number | string | Date): Date | null {
   const d = ts instanceof Date ? ts : new Date(typeof ts === "number" && ts < 1e12 ? ts * 1000 : ts);
-  if (Number.isNaN(d.getTime())) return String(ts);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Date-only display: "22 Jul 2026" — NO time component. Formatted from the value's
+ * UTC calendar day so a date-only value (a due date / expiry stored as midnight UTC)
+ * can never leak a spurious local time (the "05:30" IST artifact) or shift a day
+ * across timezones. Use this for due dates, expiries, period labels — anything that
+ * is conceptually a day, not an instant.
+ */
+export function fmtDate(ts: number | string | Date): string {
+  const d = toDate(ts);
+  if (!d) return String(ts);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/**
+ * Full timestamp display (local): date + time, for genuine instants (posted-at,
+ * settled-at). Use this ONLY when the time actually matters — otherwise use fmtDate.
+ */
+export function fmtDateTime(ts: number | string | Date): string {
+  const d = toDate(ts);
+  if (!d) return String(ts);
   return d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/** @deprecated Prefer {@link fmtDate} for days and {@link fmtDateTime} for instants. Kept for back-compat (identical to fmtDateTime). */
+export function formatDate(ts: number | string | Date): string {
+  return fmtDateTime(ts);
+}
+
+/**
+ * Person initials for avatars — the ONE shared source so the top-bar avatar and the
+ * Settings/team rows never disagree (the "JE vs JO" bug). Two words → first letter of
+ * first + last ("John Everett" → "JE"); one word / an email → first two chars
+ * ("jordan@acme.co" → "JO"). Always uppercase.
+ */
+export function initials(name?: string | null, fallback = ""): string {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return fallback;
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 // Default to the build's active network (NETWORK), never a hardcoded testnet:

@@ -1,3 +1,17 @@
+/**
+ * Avalanche network mark (the chain Benzo settles on). Red disc + the Avalanche
+ * twin-peak "A"; a faithful in-house rendition — swap for the official brand SVG anytime.
+ */
+export function AvalancheMark({ size = 16, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" role="img" aria-label="Avalanche" className={className}>
+      <circle cx="24" cy="24" r="24" fill="#E84142" />
+      <path d="M27.6 13.2 L39.4 33.8 L21.7 33.8 Z" fill="#fff" />
+      <path d="M16 22.8 L23.6 33.8 L8.6 33.8 Z" fill="#fff" />
+    </svg>
+  );
+}
+
 /** The Benzo geometric mark - currentColor so it inherits ink/accent. */
 export function Logo({ size = 24, className = "" }: { size?: number; className?: string }) {
   return (
