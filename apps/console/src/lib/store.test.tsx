@@ -119,7 +119,7 @@ describe("ConsoleProvider treasury read model", () => {
   });
 
   it("does not sign out on a transient session failure (stays on the loading screen)", async () => {
-    // A network blip / 5xx / timeout — NOT a 401 — must not strand the session on
+    // A network blip / 5xx / timeout, NOT a 401, must not strand the session on
     // sign-in: no logout, and RootGate keeps showing "Loading workspace…" (loading
     // stays true while session is still null), so the boot retry can recover.
     apiMock.session.mockRejectedValue(new Error("network blip"));

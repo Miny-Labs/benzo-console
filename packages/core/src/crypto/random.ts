@@ -2,7 +2,7 @@
  * Cross-runtime CSPRNG bytes via the Web Crypto API.
  *
  * `globalThis.crypto.getRandomValues` is available as a global in Node 20+ and
- * every browser, so core never has to import `node:crypto` — keeping the hot
+ * every browser, so core never has to import `node:crypto`, keeping the hot
  * path (note blindings, claim secrets) browser-portable. Same CSPRNG quality on
  * both runtimes.
  */

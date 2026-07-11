@@ -1,5 +1,5 @@
 /**
- * Seed data for demo mode — a rich, believable org so every console screen and
+ * Seed data for demo mode, a rich, believable org so every console screen and
  * cinematic has something real to render with zero backend. Pure factory: it
  * returns a fresh, mutable in-memory "db" the demo api reads/writes, so a session
  * feels alive (approvals clear, payroll completes, grants revoke) without a network.
@@ -56,7 +56,7 @@ export interface DemoDb {
   onboardingStatus: OnboardingStatus;
   treasuryProvision: ProvisionTreasuryResponse;
   treasuryDeposits: TreasuryDeposit[];
-  /** Private (shielded) pool total, minor units — grows when "Make private" runs. */
+  /** Private (shielded) pool total, minor units, grows when "Make private" runs. */
   privateTotal: string;
   /** Public liquid USDC balance, minor units. */
   publicUnits: string;
@@ -238,7 +238,7 @@ export function createDemoDb(): DemoDb {
       orgId: ORG_ID,
       number: "INV-2042",
       counterpartyId: "cp_diego",
-      lineItems: [{ description: "Brand system — July milestone", quantity: 1, unitAmount: usd(6200) }],
+      lineItems: [{ description: "Brand system, July milestone", quantity: 1, unitAmount: usd(6200) }],
       total: { amount: usd(6200), assetCode: "USDC" },
       status: "open",
       dueDate: ISO("2026-07-25"),
@@ -321,7 +321,7 @@ export function createDemoDb(): DemoDb {
     { id: "pr_jun", kind: "payroll", title: "June payroll · 5 people", status: "completed", amountLabel: "Private", at: ISO("2026-06-01T12:00:00Z") },
     { id: "po_done_2", kind: "invoice", title: "INV-2039 · Northwind", status: "paid", amountLabel: "$9,800.00", at: ISO("2026-06-28T16:22:00Z") },
     { id: "dep_1", kind: "deposit", title: "Shielded USDC deposit", status: "confirmed", amountLabel: "Private", at: ISO("2026-07-02T09:30:00Z") },
-    { id: "vg_1", kind: "grant", title: "Grant Thornton LLP · Q2", status: "active", amountLabel: "—", at: ISO("2026-07-01T00:00:00Z") },
+    { id: "vg_1", kind: "grant", title: "Grant Thornton LLP · Q2", status: "active", amountLabel: "-", at: ISO("2026-07-01T00:00:00Z") },
   ];
 
   const onboardingStatus: OnboardingStatus = {

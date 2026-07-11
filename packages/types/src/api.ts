@@ -118,7 +118,7 @@ export interface DashboardSummary {
   live: boolean;
 }
 
-/** GET /api/live — is the BFF wired to live testnet, and if not, why. */
+/** GET /api/live, is the BFF wired to live testnet, and if not, why. */
 export interface LiveStatusResponse {
   live: boolean;
   mode: "live" | "unavailable";

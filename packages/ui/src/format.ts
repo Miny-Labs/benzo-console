@@ -1,5 +1,5 @@
 /**
- * Display/parse helpers for money and identifiers — pure, framework-agnostic, so
+ * Display/parse helpers for money and identifiers, pure, framework-agnostic, so
  * pay.benzo.xyz and work.benzo.xyz render amounts and addresses identically.
  *
  * On Avalanche, USDC carries 6 decimals; the protocol moves base units, so
@@ -48,7 +48,7 @@ export function parseUsdc(input: string, decimals = USDC_DECIMALS): bigint {
   return neg ? -value : value;
 }
 
-/** "0x1234…abcd" — middle-truncate an EVM address/contract id. */
+/** "0x1234…abcd", middle-truncate an EVM address/contract id. */
 export function truncateAddress(addr: string, head = 5, tail = 4): string {
   if (addr.length <= head + tail + 1) return addr;
   return `${addr.slice(0, head)}…${addr.slice(-tail)}`;

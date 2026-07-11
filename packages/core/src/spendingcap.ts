@@ -3,7 +3,7 @@
  *
  * Proves a single payout is WITHIN an approved per-payout cap WITHOUT revealing
  * the payout amount. The spending limit is a circuit constraint (amount <= cap),
- * so an over-cap payout is unprovable — the policy is enforced by cryptography,
+ * so an over-cap payout is unprovable, the policy is enforced by cryptography,
  * not by a server check that could be bypassed.
  *
  * The proof binds to the SPECIFIC payout via its public note commitment (the same
@@ -26,7 +26,7 @@ export interface ProveSpendingCapParams {
 
 /**
  * Build the witness and generate a spending-cap proof. Throws if `note.amount`
- * exceeds `cap` — the constraint `amount <= cap` is unsatisfiable, so an
+ * exceeds `cap`, the constraint `amount <= cap` is unsatisfiable, so an
  * over-cap payout simply cannot produce a proof (that IS the enforcement).
  */
 export async function proveSpendingCap(

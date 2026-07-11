@@ -1,5 +1,5 @@
 /**
- * joinsplit_org — TRANSFER with in-circuit M-of-N org dual-control (stage 2).
+ * joinsplit_org, TRANSFER with in-circuit M-of-N org dual-control (stage 2).
  *
  * A copy of the live joinsplit with a per-input selector forced by the note's
  * recipient_pk: an ORG note (recipientPk = Poseidon2(memberRoot, threshold,
@@ -84,7 +84,7 @@ function build(specs: [InSpec, InSpec], opts: { forceConsumerSpend?: boolean } =
   const inputNullifier = [ins[0].nullifier, ins[1].nullifier];
   const outputCommitment = [noteCommitment(out0), noteCommitment(out1)];
 
-  // spendMessage = circomlib Poseidon(4)(nullifiers, commitments) — what members sign.
+  // spendMessage = circomlib Poseidon(4)(nullifiers, commitments), what members sign.
   const spendMessage = F.toObject(poseidon([inputNullifier[0], inputNullifier[1], outputCommitment[0], outputCommitment[1]]));
   const msgEl = F.e(spendMessage);
 
@@ -143,7 +143,7 @@ describe.skipIf(!HAVE)("joinsplit_org circuit (in-circuit M-of-N dual-control tr
     await expect(calc(build([ORG0(), DUMMY]))).resolves.toBeUndefined();
   });
 
-  it("valid: BOTH inputs are org notes (2-of-3 each) — the 2-org-input case", async () => {
+  it("valid: BOTH inputs are org notes (2-of-3 each), the 2-org-input case", async () => {
     const a = ORG0({ amount: 4_000_000n, blinding: 0xa11n, akGroup: 0x6772_70n });
     const b = ORG0({ amount: 2_000_000n, blinding: 0xb22n, akGroup: 0x6772_70n });
     await expect(calc(build([a, b]))).resolves.toBeUndefined();

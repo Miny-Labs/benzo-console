@@ -5,7 +5,7 @@
  * vk_id ORGAUTH): at least `threshold` DISTINCT approvers each EdDSA-signed the
  * SAME run binding (`spendMessage`), WITHOUT revealing WHICH approvers signed.
  * The chain accepts the authorization only if a real threshold of member
- * signatures is present — dual-control becomes a property of the proof, and the
+ * signatures is present, dual-control becomes a property of the proof, and the
  * approver identities stay private (no surveillance trail of who signed what).
  *
  * The circuit enforces distinctness (no approver counts twice), and `authTag =
@@ -74,7 +74,7 @@ export interface ProveOrgApprovalParams {
 /**
  * Build the witness and generate an anonymous M-of-N approval proof. The proof
  * attests `signerIndices.length` distinct members signed `spendMessage`, but the
- * public inputs reveal only the count threshold — never which members.
+ * public inputs reveal only the count threshold, never which members.
  */
 export async function proveOrgApproval(
   params: ProveOrgApprovalParams,

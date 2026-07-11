@@ -28,7 +28,7 @@ export const NETWORK_LABEL_BY_NETWORK = {
 export const NETWORK_LABEL = NETWORK_LABEL_BY_NETWORK[NETWORK];
 
 /**
- * Environment framing for the network chip — a financial-safety signal, not
+ * Environment framing for the network chip, a financial-safety signal, not
  * wording. A testnet must NEVER read as a green "Live"; only real-money mainnet
  * gets the green (`success`) treatment. Testnet and the permissioned L1 are amber
  * (`warning`) so nobody mistakes play money for production. Consumed by the top-bar

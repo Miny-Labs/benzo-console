@@ -1,5 +1,5 @@
 /**
- * Sponsored onboarding — assemble + sign + submit the CAP-33 reserve sandwich
+ * Sponsored onboarding, assemble + sign + submit the CAP-33 reserve sandwich
  * from reserves.ts so a brand-new user gets a usable account at ZERO XLM with a
  * USDC trustline, both reserves paid by the sponsor. The user funds nothing and
  * signs once.
@@ -20,7 +20,7 @@ import { sponsoredCreateAccountOps, sponsoredTrustlineOps } from "./reserves.js"
 export interface OnboardParams {
   horizonUrl: string;
   networkPassphrase: string;
-  /** sponsor account secret — pays both reserves (the deployer/relayer) */
+  /** sponsor account secret, pays both reserves (the deployer/relayer) */
   sponsorSecret: string;
   asset: { code: string; issuer: string };
   /** reuse an existing keypair, or omit to generate a fresh account */
@@ -47,7 +47,7 @@ export async function sponsoredOnboard(params: OnboardParams): Promise<OnboardRe
     networkPassphrase: params.networkPassphrase,
   });
   // create the account (reserve sponsored) then add the USDC trustline (reserve
-  // sponsored) — both in one atomic transaction; the new account exists by the
+  // sponsored), both in one atomic transaction; the new account exists by the
   // time its later ops execute.
   for (const op of sponsoredCreateAccountOps({
     sponsor: sponsor.publicKey(),
@@ -71,7 +71,7 @@ export async function sponsoredOnboard(params: OnboardParams): Promise<OnboardRe
  * NON-CUSTODIAL onboarding (the wallet path): the browser generates its own
  * keypair and only sends its PUBLIC key. The sponsor service builds the
  * create+trustline tx, signs with the sponsor key, and returns the XDR. The
- * browser then signs with its own key and submits — the server never sees the
+ * browser then signs with its own key and submits, the server never sees the
  * user's secret.
  */
 export async function prepareSponsoredOnboard(params: {

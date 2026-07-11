@@ -7,7 +7,7 @@ const mk = (amount: bigint, leafIndex = 0) => ({
   leafIndex,
 });
 
-describe("selectSpendNotes — 2-in coin selection", () => {
+describe("selectSpendNotes, 2-in coin selection", () => {
   it("returns the smallest single note that covers the amount", () => {
     const r = selectSpendNotes([mk(5n, 0), mk(10n, 1), mk(20n, 2)], 8n);
     expect(r).toHaveLength(1);

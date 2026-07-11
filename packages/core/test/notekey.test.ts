@@ -13,7 +13,7 @@ const sig = new Uint8Array(64).fill(7);
 const sig2 = new Uint8Array(64).fill(9);
 
 describe("note keys from one signed message (Railgun pattern)", () => {
-  it("is deterministic — the same signature recovers the same account", () => {
+  it("is deterministic, the same signature recovers the same account", () => {
     const a = accountFromSignedMessage(sig);
     const b = accountFromSignedMessage(sig);
     expect(a.spendSk).toBe(b.spendSk);
@@ -31,7 +31,7 @@ describe("note keys from one signed message (Railgun pattern)", () => {
   });
 });
 
-describe("loginWithSigner — the headless wallet login seam", () => {
+describe("loginWithSigner, the headless wallet login seam", () => {
   it("signs NOTE_KEY_MESSAGE and yields the same account as direct derivation", async () => {
     let signed = "";
     const signer = (m: string) => { signed = m; return sig; };
@@ -58,7 +58,7 @@ describe("Stellar edge-key challenge signatures", () => {
   });
 });
 
-describe("accountFromServerSecret — stable serverless sandbox identity", () => {
+describe("accountFromServerSecret, stable serverless sandbox identity", () => {
   it("recovers the same account from the same env-held secret", () => {
     const a = accountFromServerSecret("SDETTESTSECRET", "consumer");
     const b = accountFromServerSecret("SDETTESTSECRET", "consumer");

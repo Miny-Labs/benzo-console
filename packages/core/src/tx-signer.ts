@@ -3,7 +3,7 @@
  *
  * Background: `StellarRpcClient` delegates writes to an injected `submitWrite`.
  * The MVP wired that to a self-hosted relayer that held a `DEPLOYER_SECRET` and
- * signed on the user's behalf — CUSTODIAL: the operator key could submit any
+ * signed on the user's behalf, CUSTODIAL: the operator key could submit any
  * transaction. This module replaces that with a `TxSignerPort` so the *user's
  * own* key (Freighter, a passkey smart account, or a local keypair for
  * CLI/self-host) signs, and the relayer (if used at all) only sponsors fees via
@@ -36,7 +36,7 @@ import type { InvokeResult } from "./stellar.js";
 
 /**
  * A pluggable signer: turns an unsigned transaction XDR into a signed one. This
- * is the custody boundary — core builds and submits, but the *signature* comes
+ * is the custody boundary, core builds and submits, but the *signature* comes
  * from whatever the runtime trusts (a browser extension, a passkey, an HSM, a
  * local key). Deliberately the same shape as `@stellar/freighter-api`'s
  * `signTransaction`, so the browser wallet needs no adapter.
@@ -49,7 +49,7 @@ export interface TxSignerPort {
 }
 
 /**
- * Local Ed25519 signer over a `S…` secret — for the CLI, self-host services,
+ * Local Ed25519 signer over a `S…` secret, for the CLI, self-host services,
  * and tests. In the browser you would NOT use this (it holds the raw key);
  * there you pass a `TxSignerPort` backed by Freighter or a passkey instead.
  */
@@ -86,7 +86,7 @@ export function signerFromFn(
   };
 }
 
-/** The slice of `rpc.Server` the submit path needs — narrowed so tests can
+/** The slice of `rpc.Server` the submit path needs, narrowed so tests can
  *  inject a fake without standing up a chain. */
 export interface SubmitRpc {
   sendTransaction(tx: Transaction | FeeBumpTransaction): Promise<{
@@ -120,7 +120,7 @@ function nativeResult(retval?: xdr.ScVal): { result: unknown; raw: string } {
  * Sign an already-prepared (simulated + assembled) transaction with the port,
  * submit it, and poll to finality. The signer is the only thing that touches
  * key material; this function is pure transport. Submission normally runs
- * exactly once (a Soroban write is not idempotent — a blind retry could
+ * exactly once (a Soroban write is not idempotent, a blind retry could
  * double-execute). The only send retry allowed here is a freshly rebuilt tx
  * after RPC returns `txBadSeq`, which means the rejected inner transaction did
  * not execute.
@@ -276,7 +276,7 @@ export async function buildInvokeTx(opts: {
 
 /**
  * Produce a `submitWrite` (for `StellarRpcOptions.submitWrite`) that signs
- * client-side with `signer` and submits directly to RPC — no custodial relayer.
+ * client-side with `signer` and submits directly to RPC, no custodial relayer.
  * Drop-in: `new StellarRpcClient({ …, submitWrite: makeClientSubmitWrite({…}) })`.
  */
 export function makeClientSubmitWrite(deps: {

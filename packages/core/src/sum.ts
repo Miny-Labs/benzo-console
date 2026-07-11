@@ -2,13 +2,13 @@
  * Proof-of-sum / confidential disclose-total.
  *
  * Generates a zero-knowledge proof that the holder's notes in the pool tree sum
- * to EXACTLY `claimedTotal`, revealing only that total — the cryptographic
+ * to EXACTLY `claimedTotal`, revealing only that total, the cryptographic
  * replacement for the old plaintext decrypt-and-sum disclosure (which leaked
  * every individual amount to the auditor). Public inputs:
  * [root, claimedTotal, assetId, context].
  *
  * COMPLETENESS: this proves "I own notes summing to claimedTotal", NOT "these
- * are ALL my in-scope notes" — a discloser could still under-report by omitting
+ * are ALL my in-scope notes", a discloser could still under-report by omitting
  * a note. The set-completeness guarantee composes with the authorized-MVK
  * registry binding.
  */
@@ -49,7 +49,7 @@ export async function proveSum(params: ProveSumParams): Promise<ProveResult> {
     throw new Error(`proof-of-sum supports at most ${MAX_SUM_NOTES} notes`);
   }
   // Fail fast off-circuit: the circuit enforces sum === claimedTotal, so a
-  // mismatch would just fail to prove — surface it as a clear error instead.
+  // mismatch would just fail to prove, surface it as a clear error instead.
   const declared = params.notes.reduce((s, n) => s + n.amount, 0n);
   if (declared !== params.claimedTotal) {
     throw new Error(
@@ -108,7 +108,7 @@ export interface ProveSumOrgParams {
  * ORG proof-of-sum: prove the M-of-N treasury (owner = orgRecipientPk(memberRoot,
  * threshold, akGroupPub(akGroup))) owns notes summing to EXACTLY `claimedTotal`,
  * revealing only the total. The disclosure proves OWNER KNOWLEDGE (the org key
- * preimage) — not a spend — so no member signatures are needed.
+ * preimage), not a spend, so no member signatures are needed.
  */
 export async function proveSumOrg(params: ProveSumOrgParams): Promise<ProveResult> {
   if (params.notes.length > MAX_SUM_NOTES) {

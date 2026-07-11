@@ -6,7 +6,7 @@ import { motion, spring } from "./motion";
 export * from "./controls";
 
 /**
- * Surface card — 12px radius, one visible neutral hairline, white on the very light
+ * Surface card, 12px radius, one visible neutral hairline, white on the very light
  * neutral page bg, NO fixed height, no shadow (shadows are reserved for floating
  * things like dropdowns/modals). Default padding is 24px; pass `compact` for the 20px
  * dense variant, or any `p-*`/`px-*` class to take full control (back-compat: a Card
@@ -28,7 +28,7 @@ export function Card({ children, className = "", compact, ...rest }: { children:
 }
 
 /**
- * Plain explanatory block — NOT a card. Use for prose / technical explanation; caps
+ * Plain explanatory block, NOT a card. Use for prose / technical explanation; caps
  * the reading measure (~720px) so long paragraphs stay legible. The page → card →
  * control hierarchy stays at 3 levels; a Section is page-level, never nested chrome.
  */
@@ -58,7 +58,7 @@ const TONE: Record<Tone, string> = {
   shielded: "bg-shielded/12 text-shielded",
 };
 
-/** Status pill — ~24px tall, 12px label. */
+/** Status pill, ~24px tall, 12px label. */
 export function Pill({ children, tone = "muted" }: { children: ReactNode; tone?: Tone }) {
   return (
     <span className={`inline-flex min-h-[24px] items-center gap-1 rounded-full px-2.5 py-0.5 text-[12px] font-medium ${TONE[tone]}`}>
@@ -68,7 +68,7 @@ export function Pill({ children, tone = "muted" }: { children: ReactNode; tone?:
 }
 
 /**
- * Metadata pill — ALWAYS neutral gray. For descriptive tags that are NOT a lifecycle
+ * Metadata pill, ALWAYS neutral gray. For descriptive tags that are NOT a lifecycle
  * status: tax forms (W9, W8-BEN), "manual", "full", counterparty type, etc. These must
  * never borrow green/purple, which are reserved for confirmed / private-on-chain.
  */
@@ -128,12 +128,12 @@ export function ShieldedBadge({ label = "Private" }: { label?: string }) {
 }
 
 /**
- * Money — a tight `$X,XXX.XX` amount. The number renders as ONE solid token, so there
+ * Money, a tight `$X,XXX.XX` amount. The number renders as ONE solid token, so there
  * are no wide gaps around the `$`, commas or decimal (the tabular-nums-spacing
  * regression). `code` notes the denomination (e.g. "USDC") as a muted suffix where it
- * matters — treasury / summaries. `tabular` opts into fixed-width digits for column
+ * matters, treasury / summaries. `tabular` opts into fixed-width digits for column
  * alignment inside tables; alignment there is fine, but tightness always wins.
- * `minor` is USDC base units (6dp) as string|bigint — same contract as fmtUsd.
+ * `minor` is USDC base units (6dp) as string|bigint, same contract as fmtUsd.
  */
 export function Amount({
   minor,
@@ -156,7 +156,7 @@ export function Amount({
   );
 }
 
-/** Alias — some surfaces read better as <Money/>. */
+/** Alias, some surfaces read better as <Money/>. */
 export const Money = Amount;
 
 export function Button({
@@ -196,7 +196,7 @@ export function Button({
     lg: "min-h-[44px] px-4 text-sm",
   };
   // Disabled = NEUTRAL GRAY, never a faded-purple primary (which reads as "still
-  // clickable"). Applies only to a genuinely-disabled button — a loading button keeps
+  // clickable"). Applies only to a genuinely-disabled button, a loading button keeps
   // its variant colour so the spinner stays legible.
   const disabledCls =
     disabled && !loading

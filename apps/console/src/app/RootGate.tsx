@@ -14,7 +14,7 @@ export function RootGate() {
   const { session, loading, refresh } = useConsole();
   const isDesktop = useIsDesktop();
   // Demo mode skips SIWE onboarding entirely and boots into the Shell (the
-  // desktop-only gate below still applies — this stays a desktop product).
+  // desktop-only gate below still applies, this stays a desktop product).
   const [onboarded, setOnboarded] = useState(() => DEMO_MODE || localStorage.getItem("benzo.console.onboarded") === "1");
   const [orgOnboarding, setOrgOnboarding] = useState(false);
   function finish() {

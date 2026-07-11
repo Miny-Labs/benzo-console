@@ -1,6 +1,6 @@
 /**
  * Avalanche network mark (the chain Benzo settles on). Red disc + the Avalanche
- * twin-peak "A"; a faithful in-house rendition — swap for the official brand SVG anytime.
+ * twin-peak "A"; a faithful in-house rendition, swap for the official brand SVG anytime.
  */
 export function AvalancheMark({ size = 16, className = "" }: { size?: number; className?: string }) {
   return (

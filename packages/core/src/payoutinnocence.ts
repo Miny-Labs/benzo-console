@@ -3,7 +3,7 @@
  *
  * Proves the RECIPIENT of a payout is NOT on a sanctions / deny set (an OFAC-style
  * deny SMT) WITHOUT revealing who the recipient is. A sanctioned recipient cannot
- * produce a non-inclusion proof, so that payout is provably blocked — the deny
+ * produce a non-inclusion proof, so that payout is provably blocked, the deny
  * screen is enforced by cryptography, bound to the payout's note commitment.
  *
  * Public inputs: [denyRoot, commitment, assetId, context].

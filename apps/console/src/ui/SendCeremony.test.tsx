@@ -46,7 +46,7 @@ describe("SendCeremony", () => {
     rerender(<SendCeremony open state={{ phase: "confirmed" }} />);
     expect(screen.getByRole("heading", { name: "Encrypting your payment" })).toBeInTheDocument();
 
-    // After the encrypt floor, the Settling beat must appear — never skipped,
+    // After the encrypt floor, the Settling beat must appear, never skipped,
     // or the ceremony would be lying about settlement.
     await act(async () => {
       vi.advanceTimersByTime(SEND_PHASE_FLOOR_MS.encrypt);

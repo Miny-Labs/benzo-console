@@ -20,7 +20,7 @@ describe("MvkRegistryMirror.syncWithOwnedKey", () => {
 
   it("yields a valid path for an owned key that is NOT the tail (the claim bug)", () => {
     const m = new MvkRegistryMirror();
-    m.syncWithOwnedKey(leaves, 22n); // middle key — used to throw 'MVK not registered'
+    m.syncWithOwnedKey(leaves, 22n); // middle key, used to throw 'MVK not registered'
     expect(() => m.pathFor(22n)).not.toThrow();
     expect(m.pathFor(22n)).toEqual(ref.pathFor(22n));
   });

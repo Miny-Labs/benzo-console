@@ -2,7 +2,7 @@
  * Contractors - the roster + rate cards that the pay engine COMPUTES runs from.
  * This is the input to every payroll run: a managed payee book with a monthly USDC
  * rate per contractor, CSV import, single-row add, and inline rate/handle edits. Run
- * amounts are computed server-side from these rates (never typed in) — surfaced as the
+ * amounts are computed server-side from these rates (never typed in), surfaced as the
  * info note beside the payroll total, not as page chrome.
  */
 import { Fragment, useMemo, useState } from "react";
@@ -46,7 +46,7 @@ export function Contractors() {
 
   const contractors = useMemo(() => counterparties.filter((c) => c.type === "contractor"), [counterparties]);
   // Two distinct axes: an ACTIVE contractor is allowlisted (payable); IN REVIEW is
-  // still being screened. The header stat used to say "5" while six rows showed — the
+  // still being screened. The header stat used to say "5" while six rows showed, the
   // 6th is in review, not active. These counts keep that split honest.
   const active = useMemo(() => contractors.filter((c) => c.status === "allowlisted"), [contractors]);
   const inReview = useMemo(() => contractors.filter((c) => c.status === "pending_screening"), [contractors]);
@@ -93,7 +93,7 @@ export function Contractors() {
     }
   }
 
-  // Single-row add reuses the roster import path — same server-side validation, so a
+  // Single-row add reuses the roster import path, same server-side validation, so a
   // quick add and a bulk import can't diverge.
   async function doAdd() {
     const name = add.name.trim();
@@ -120,7 +120,7 @@ export function Contractors() {
     }
   }
 
-  // Close the add modal AND clear its form — both the ✕ and Cancel use this so a
+  // Close the add modal AND clear its form, both the ✕ and Cancel use this so a
   // half-filled, cancelled form never reappears on reopen.
   function closeAdd() {
     setAddOpen(false);
@@ -234,7 +234,7 @@ export function Contractors() {
                 <Amount minor={monthlyTotal} code="USDC" />
                 <span
                   className="cursor-help text-muted transition hover:text-fg"
-                  title="Computed from each contractor's rate card on the server — amounts are never typed into a run."
+                  title="Computed from each contractor's rate card on the server, amounts are never typed into a run."
                   aria-label="How this total is computed"
                 >
                   <Info size={14} />
@@ -308,7 +308,7 @@ export function Contractors() {
                       </div>
                     </Td>
 
-                    {/* Monthly rate — tight tabular, right-aligned, click to edit */}
+                    {/* Monthly rate, tight tabular, right-aligned, click to edit */}
                     <Td align="right">
                       <motion.div
                         className="-mx-2 inline-block rounded-md px-2"
@@ -381,17 +381,17 @@ export function Contractors() {
                       </motion.div>
                     </Td>
 
-                    {/* Tax form — neutral MetaPill; missing = amber (incomplete, not a failure) */}
+                    {/* Tax form, neutral MetaPill; missing = amber (incomplete, not a failure) */}
                     <Td>
                       {hasTax ? <MetaPill>{c.taxFormType}</MetaPill> : <Pill tone="warning">Missing</Pill>}
                     </Td>
 
-                    {/* Verification — compact lifecycle badge (screening outcome) */}
+                    {/* Verification, compact lifecycle badge (screening outcome) */}
                     <Td>
                       <StatusPill status={c.status} />
                     </Td>
 
-                    {/* Payment access — the allowlist control (separate axis from verification) */}
+                    {/* Payment access, the allowlist control (separate axis from verification) */}
                     <Td>
                       <select
                         value={c.status}
@@ -476,7 +476,7 @@ export function Contractors() {
           />
           <Input
             label="Handle"
-            hint="Optional. Their Benzo handle for private payouts — you can add it later."
+            hint="Optional. Their Benzo handle for private payouts, you can add it later."
             value={add.handle}
             onChange={(e) => setAdd((a) => ({ ...a, handle: e.target.value.replace(/[^a-zA-Z0-9_@.-]/g, "") }))}
             placeholder="@jane"
@@ -484,7 +484,7 @@ export function Contractors() {
           />
           <Input
             label="Monthly rate (USDC)"
-            hint="The rate card each payroll run is computed from — never typed into a run."
+            hint="The rate card each payroll run is computed from, never typed into a run."
             value={add.rate}
             onChange={(e) => setAdd((a) => ({ ...a, rate: e.target.value.replace(/[^0-9.]/g, "") }))}
             placeholder="8500"

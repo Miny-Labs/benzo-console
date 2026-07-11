@@ -1,7 +1,7 @@
 /**
  * The shielded-payment lifecycle as a pure state machine, shared by both apps so
  * "what's happening to my money right now" is modeled once. A private payment is
- * not one network call — it is build-witness → prove (seconds, on-device) →
+ * not one network call, it is build-witness → prove (seconds, on-device) →
  * submit → confirm, and the UI must show each phase honestly (especially the
  * proving wait, which is the unfamiliar part for a Cash-App-shaped user).
  *
@@ -42,7 +42,7 @@ const ORDER: PaymentPhase[] = ["idle", "building", "proving", "submitting", "con
 export function paymentReducer(state: PaymentState, event: PaymentEvent): PaymentState {
   switch (event.type) {
     case "START":
-      // Only startable from a rest state — ignore double-submits mid-flight.
+      // Only startable from a rest state, ignore double-submits mid-flight.
       return state.phase === "idle" || state.phase === "failed" || state.phase === "confirmed"
         ? { phase: "building" }
         : state;
@@ -68,7 +68,7 @@ export function paymentReducer(state: PaymentState, event: PaymentEvent): Paymen
   }
 }
 
-/** No further automatic transitions — the flow has settled. */
+/** No further automatic transitions, the flow has settled. */
 export function isTerminal(state: PaymentState): boolean {
   return state.phase === "confirmed" || state.phase === "failed";
 }

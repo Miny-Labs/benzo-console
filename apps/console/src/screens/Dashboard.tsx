@@ -1,8 +1,8 @@
 /**
- * Dashboard / Overview — calm, dense enterprise-finance home. A compact setup
+ * Dashboard / Overview, calm, dense enterprise-finance home. A compact setup
  * banner (only when setup is unfinished), the private treasury balance, the one
  * approval awaiting the current member, and a real recent-activity table. Amounts
- * follow one rule: •••••• only when the viewer can't see the figure, — when there
+ * follow one rule: •••••• only when the viewer can't see the figure,, when there
  * is no amount, and a "Private on-chain" tag for money that's visible in Benzo but
  * hidden publicly. Everything settles on Avalanche/eERC.
  */
@@ -39,7 +39,7 @@ function useCountUp(target: number, durationMs = 1000): number {
   return value;
 }
 
-/** "2026-07-08T14:10:00Z" -> "2 hours ago" — a calm relative age for submitted-at. */
+/** "2026-07-08T14:10:00Z" -> "2 hours ago", a calm relative age for submitted-at. */
 function timeAgo(ts: string | number | Date): string {
   const then = new Date(ts).getTime();
   if (Number.isNaN(then)) return "";
@@ -47,7 +47,7 @@ function timeAgo(ts: string | number | Date): string {
   const min = Math.round(diff / 60_000);
   if (min < 1) return "just now";
   if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
-  // Derive each unit from `diff` directly — deriving hr from the already-rounded
+  // Derive each unit from `diff` directly, deriving hr from the already-rounded
   // min (etc.) compounds rounding and overstates age at boundaries.
   const hr = Math.round(diff / 3_600_000);
   if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
@@ -62,11 +62,11 @@ function primaryTreasuryMinor(treasury: TreasuryView | null | undefined, fallbac
 }
 
 /**
- * Setup banner — the bridge from onboarding to first value, collapsed into ONE calm
- * line: "Finish setup — N steps remaining" + the next action's prompt + its CTA.
+ * Setup banner, the bridge from onboarding to first value, collapsed into ONE calm
+ * line: "Finish setup, N steps remaining" + the next action's prompt + its CTA.
  * Steps are seeded from REAL store state (not a stored "seen" flag), so each flips to
  * done on its own when the underlying condition is met. Completed steps are disclosed
- * under a small toggle — a muted check + "Completed", never struck through. It
+ * under a small toggle, a muted check + "Completed", never struck through. It
  * auto-hides once everything's done and can be dismissed (persisted).
  */
 function SetupBanner() {
@@ -75,7 +75,7 @@ function SetupBanner() {
   const [dismissed, setDismissed] = useState(() => localStorage.getItem("benzo.console.firstrun.dismissed") === "1");
   const [showDone, setShowDone] = useState(false);
 
-  // Seed each item from live state — honest, not a stored flag.
+  // Seed each item from live state, honest, not a stored flag.
   const funded = Number(primaryTreasuryMinor(treasury)) > 0;
   // Maker-checker needs a proposer ≠ approver: more than one member, at least one of
   // whom can approve.
@@ -114,7 +114,7 @@ function SetupBanner() {
           </span>
           <div className="min-w-0">
             <div className="t-card-title text-fg">
-              Finish setup — {remaining.length} step{remaining.length === 1 ? "" : "s"} remaining
+              Finish setup, {remaining.length} step{remaining.length === 1 ? "" : "s"} remaining
             </div>
             <div className="t-helper mt-0.5">{next.prompt}</div>
           </div>
@@ -166,7 +166,7 @@ function SetupBanner() {
   );
 }
 
-/** Business labels for activity kinds — an auditor-grant event reads distinct from a payment. */
+/** Business labels for activity kinds, an auditor-grant event reads distinct from a payment. */
 const TYPE_LABEL: Record<ActivityItem["kind"], string> = {
   payment: "Payment",
   invoice: "Invoice",
@@ -225,9 +225,9 @@ export function Dashboard() {
   const targetDollars = Number(primaryTreasuryMinor(treasury, dashboard?.totalPosition.amount ?? "0")) / USDC_SCALE;
   const animatedTotal = useCountUp(targetDollars);
 
-  /** •••••• (hidden from viewer) · — (no amount) · the figure (visible). */
+  /** •••••• (hidden from viewer) ·, (no amount) · the figure (visible). */
   function amountCell(a: ActivityItem) {
-    if (a.amountLabel === "—") return <span className="text-muted">—</span>;
+    if (a.amountLabel === "-") return <span className="text-muted">-</span>;
     if (masked || a.amountLabel === "Private") return <span className="mask">••••••</span>;
     return <span className="tnum font-medium text-fg">{a.amountLabel}</span>;
   }
@@ -251,7 +251,7 @@ export function Dashboard() {
       ) : null}
 
       <Stagger className="grid grid-cols-1 items-start gap-4 lg:grid-cols-12">
-        {/* Private treasury balance — 7 col */}
+        {/* Private treasury balance, 7 col */}
         <Stagger.Item index={0} className="lg:col-span-7">
           <Card>
             <div className="flex items-center justify-between gap-3">
@@ -271,7 +271,7 @@ export function Dashboard() {
           </Card>
         </Stagger.Item>
 
-        {/* Approval awaiting you — 5 col */}
+        {/* Approval awaiting you, 5 col */}
         <Stagger.Item index={1} className="lg:col-span-5">
           <Card className="flex flex-col">
             <div className="t-label text-muted">Approvals</div>
@@ -308,7 +308,7 @@ export function Dashboard() {
         </Stagger.Item>
       </Stagger>
 
-      {/* Recent activity — full width */}
+      {/* Recent activity, full width */}
       <Stagger className="mt-8">
         <Stagger.Item index={2}>
           <div className="mb-3 flex items-center justify-between gap-4">
@@ -349,7 +349,7 @@ export function Dashboard() {
                     key={a.id}
                     role="button"
                     tabIndex={0}
-                    aria-label={`${a.title} — view details`}
+                    aria-label={`${a.title}, view details`}
                     onClick={() => nav(routeForActivity(a))}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
@@ -370,7 +370,7 @@ export function Dashboard() {
                       </span>
                     </Td>
                     <Td align="right">{amountCell(a)}</Td>
-                    <Td>{a.kind === "grant" ? <span className="text-muted">—</span> : <PrivateOnChain />}</Td>
+                    <Td>{a.kind === "grant" ? <span className="text-muted">-</span> : <PrivateOnChain />}</Td>
                   </tr>
                 ))
               )}

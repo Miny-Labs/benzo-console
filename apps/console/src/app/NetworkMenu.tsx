@@ -1,5 +1,5 @@
 /**
- * Top-bar network indicator + chain info — **read-only, not a switcher**. Benzo
+ * Top-bar network indicator + chain info, **read-only, not a switcher**. Benzo
  * Console runs on a single chain (the permissioned BenzoNet L1 by default; pinned at
  * build time), so this shows the active network's identity, environment, and details
  * (chain id / RPC / explorer). There is no network selection: the console isn't
@@ -19,7 +19,7 @@ function envToneCls(env: NetworkEnv): string {
     : "border-warning/30 bg-warning/12 text-[#9a6b12]";
 }
 
-/** Explicit environment badge — Testnet / Mainnet / Permissioned L1. */
+/** Explicit environment badge, Testnet / Mainnet / Permissioned L1. */
 function EnvBadge({ env }: { env: NetworkEnv }) {
   return (
     <span className={`flex-none rounded-full border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${envToneCls(env)}`}>
@@ -69,11 +69,11 @@ export function NetworkMenu({ live }: { live: boolean }) {
     };
   }, [open]);
 
-  // Everything is keyed to the single build-time NETWORK — there is no selection.
+  // Everything is keyed to the single build-time NETWORK, there is no selection.
   const info = chainInfo(NETWORK);
   const env = NETWORK_ENV_BY_NETWORK[NETWORK];
   // Chrome by ENVIRONMENT (never by liveness): amber for testnet / permissioned L1,
-  // green only for real-money mainnet. Liveness is a separate axis — a subtle heartbeat
+  // green only for real-money mainnet. Liveness is a separate axis, a subtle heartbeat
   // when connected, a red "Offline · …" when the chain is unreachable.
   const chipTone = live ? envToneCls(env) : "border-danger/30 bg-danger/10 text-[#b4232a]";
   const chipLabel = live ? env.chip : `Offline · ${env.badge}`;

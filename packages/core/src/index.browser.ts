@@ -1,5 +1,5 @@
 /**
- * Browser entry for @benzo/core — everything EXCEPT the two node-only modules:
+ * Browser entry for @benzo/core, everything EXCEPT the two node-only modules:
  *   - stellar.js      (StellarCli shells `node:child_process`)
  *   - account-file.js (file persistence via `node:fs`)
  *

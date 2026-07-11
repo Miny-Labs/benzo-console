@@ -1,5 +1,5 @@
 /**
- * Demo api — a drop-in for the real typed `api` client that resolves every read
+ * Demo api, a drop-in for the real typed `api` client that resolves every read
  * against a seeded in-memory org and every write against a mutable copy of it, on
  * realistic timers, with NO network. Swapped in at build time by `VITE_DEMO_MODE=1`
  * (see ../lib/api.ts). Writes mutate the shared `db`, and prove/settle flows return
@@ -50,7 +50,7 @@ let demoMockKyc: { name?: string; country?: string } | undefined;
 // ---- fake-chain helpers ---------------------------------------------------
 function randHex(len: number): string {
   const bytes = new Uint8Array(Math.ceil(len / 2));
-  // Fallback must fill `bytes` IN PLACE — `.map()` returns a fresh array that
+  // Fallback must fill `bytes` IN PLACE, `.map()` returns a fresh array that
   // would be discarded, leaving `bytes` all-zeros (identical output every call).
   const rng = globalThis.crypto ?? {
     getRandomValues: (a: Uint8Array) => {
@@ -556,7 +556,7 @@ export const demoApi = {
     return {
       packet: built,
       integrity: { ok: true, headHash: built.anchor.headHash },
-      disclosure: "Anchored on-chain — only the Merkle root leaves the ciphertext.",
+      disclosure: "Anchored on-chain, only the Merkle root leaves the ciphertext.",
       packetHash: fakeTx(),
       orgHash: fakeTx(),
       anchor: { onChain: true, contractId: fakeVerifier(), txHash, sequence: String(Math.floor(Math.random() * 90000) + 10000), explorer: explorerTxUrl(txHash) },

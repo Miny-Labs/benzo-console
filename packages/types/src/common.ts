@@ -3,7 +3,7 @@
  *
  * IDs are plain strings (aliased for documentation, not branded, to keep the
  * API/UI boundary friction-free). Money is integer MINOR UNITS encoded as a
- * string so it survives JSON without bigint loss — the on-chain truth is
+ * string so it survives JSON without bigint loss, the on-chain truth is
  * 6-decimal USDC base units on Avalanche; the product layer keeps the same
  * convention.
  */

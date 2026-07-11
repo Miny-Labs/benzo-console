@@ -1,5 +1,5 @@
 /**
- * Poseidon2 over the BN254 scalar field — TypeScript mirror.
+ * Poseidon2 over the BN254 scalar field, TypeScript mirror.
  *
  * The parameterization (d=5, RF=8, RP=56, round constants, internal matrix
  * diagonals for t = 2/3/4) is loaded from the pinned canonical JSON

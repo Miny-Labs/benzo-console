@@ -2,7 +2,7 @@
  * In-circuit M-of-N org spend-authorization circuit test. Builds real member
  * EdDSA-over-BabyJubJub signatures (circomlibjs) over a shared spendMessage, a
  * member Merkle tree, and asserts the security properties by WITNESS CALCULATION
- * (which enforces every constraint — no trusted setup needed): a valid 2-of-3
+ * (which enforces every constraint, no trusted setup needed): a valid 2-of-3
  * authorizes; sub-threshold (1 of required 2) and a duplicate signer (same member
  * twice) both FAIL. Self-skips when the gitignored circuit wasm is absent.
  */
@@ -85,7 +85,7 @@ describe.skipIf(!HAVE)("org_spend_auth circuit (in-circuit M-of-N)", () => {
 
   it("rejects a duplicate signer (same member counted twice)", async () => {
     const a = member(11), c = member(13);
-    // slots 0 and 1 are the SAME member a — distinctness must reject it
+    // slots 0 and 1 are the SAME member a, distinctness must reject it
     await expect(calc(buildInput([{ m: a, enabled: 1 }, { m: a, enabled: 1 }, { m: c, enabled: 0 }], 2n))).rejects.toThrow();
   });
 

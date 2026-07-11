@@ -10,7 +10,7 @@ import type { Role } from "./org.js";
 
 /**
  * A routing condition. NOTE (privacy crux): conditions reference amount /
- * counterparty, which Benzo hides on-chain — the BFF evaluates the policy over
+ * counterparty, which Benzo hides on-chain, the BFF evaluates the policy over
  * the PLAINTEXT PROPOSAL before a proof is generated.
  */
 export interface ApprovalCondition {

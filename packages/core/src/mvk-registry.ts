@@ -4,7 +4,7 @@
  * note's MVK is a member of this registry under a recent `registeredMvkRoot`
  * (leaf = `mvkRegistryLeaf(mvkPub, keyMeta)`, the circuit's
  * `BenzoMvkRegistryLeaf`, domain 0x08). To build that witness the SDK needs the
- * registry root + a Merkle path to the MVK's leaf — exactly what this mirror
+ * registry root + a Merkle path to the MVK's leaf, exactly what this mirror
  * provides, the same way `MerkleTreeMirror` mirrors the pool and ASP trees.
  *
  * Depth is pinned to the circuit's `mvkLevels` (16). The on-chain registry is
@@ -22,7 +22,7 @@
 import { MerkleTreeMirror, type MerklePath } from "./merkle.js";
 import { mvkRegistryLeaf } from "./notes.js";
 
-/** Circuit `mvkLevels` — the on-chain registry must be deployed with this depth. */
+/** Circuit `mvkLevels`, the on-chain registry must be deployed with this depth. */
 export const MVK_REGISTRY_DEPTH = 16;
 
 /** Default `keyMeta` (packs org/scope/expiry/epoch; a single 0 field for the MVP). */
@@ -42,7 +42,7 @@ export class MvkRegistryMirror {
    * Replay prior on-chain state: reset and insert `leaves` (raw leaf values from
    * `MvkRegistered` events, in index order) so the mirror's root tracks a
    * registry that already holds entries. Subsequent `register()` calls append
-   * after them — exactly as the contract does — so the root stays in lockstep.
+   * after them, exactly as the contract does, so the root stays in lockstep.
    * Prior leaves carry no `mvkPub→index` mapping (we only need paths for keys
    * this process registers); `pathFor` on a synced-but-not-registered key throws.
    */
@@ -82,7 +82,7 @@ export class MvkRegistryMirror {
     return this.index.has(mvkPub);
   }
 
-  /** Current registry root — the witness's `registeredMvkRoot`. */
+  /** Current registry root, the witness's `registeredMvkRoot`. */
   root(): bigint {
     return this.tree.root();
   }
@@ -95,7 +95,7 @@ export class MvkRegistryMirror {
   }
 
   /**
-   * A one-entry registry holding just `mvkPub` — the well-formed-proof stand-in
+   * A one-entry registry holding just `mvkPub`, the well-formed-proof stand-in
    * used until the registry is deployed and synced. Equivalent to `new
    * MvkRegistryMirror()` + a single `register`.
    */

@@ -200,7 +200,7 @@ function useFlooredPaymentState(open: boolean, state: PaymentState, reducedMotio
 
     // Advance exactly ONE ceremony beat toward the target, holding the current
     // beat for its floor. Re-running on visibleState change walks the remaining
-    // beats — so a batched encrypt -> confirmed jump still plays "Settling".
+    // beats, so a batched encrypt -> confirmed jump still plays "Settling".
     const ci = CEREMONY_ORDER.indexOf(currentPhase as OrderedPhase);
     const ni = CEREMONY_ORDER.indexOf(nextPhase as OrderedPhase);
     const stepPhase: OrderedPhase | typeof nextPhase = ci >= 0 && ni > ci + 1 ? CEREMONY_ORDER[ci + 1] : nextPhase;

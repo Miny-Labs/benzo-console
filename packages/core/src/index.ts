@@ -1,5 +1,5 @@
 /**
- * @benzo/core — headless TypeScript SDK for the Benzo shielded-USDC protocol
+ * @benzo/core, headless TypeScript SDK for the Benzo shielded-USDC protocol
  * on Stellar (Soroban).
  *
  * Modules:

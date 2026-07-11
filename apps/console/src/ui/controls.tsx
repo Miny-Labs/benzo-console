@@ -112,7 +112,7 @@ export function Modal({
 
 // ---------------------------------------------------------------- table
 
-/** Text alignment for a cell — `right` for amount columns, `left` (default) otherwise. */
+/** Text alignment for a cell, `right` for amount columns, `left` (default) otherwise. */
 type CellAlign = "left" | "right" | "center";
 const ALIGN: Record<CellAlign, string> = { left: "text-left", right: "text-right", center: "text-center" };
 
@@ -124,7 +124,7 @@ export function Table({ children, className = "" }: { children: ReactNode; class
   );
 }
 /**
- * Header cell — the 12px status/table-label treatment. `align="right"` for the amount
+ * Header cell, the 12px status/table-label treatment. `align="right"` for the amount
  * column; put row actions in the rightmost column (align right or center).
  */
 export function Th({ children, align = "left", className = "" }: { children?: ReactNode; align?: CellAlign; className?: string }) {
@@ -142,7 +142,7 @@ export function Tr({ children, onClick, className = "", ...rest }: { children: R
         onClick
           ? (e) => {
               // Don't hijack a click that landed on a nested control (a button, link, or
-              // field inside a cell) — let that control run its own action.
+              // field inside a cell), let that control run its own action.
               if (!(e.target as HTMLElement).closest("button, a, input, select, textarea, label")) onClick();
             }
           : undefined
@@ -154,7 +154,7 @@ export function Tr({ children, onClick, className = "", ...rest }: { children: R
       onKeyDown={
         onClick
           ? (e) => {
-              // Only the row itself activates — a focused nested control keeps its keys.
+              // Only the row itself activates, a focused nested control keeps its keys.
               if (e.target !== e.currentTarget) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();

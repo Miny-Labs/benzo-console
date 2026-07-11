@@ -20,7 +20,7 @@ const HAVE_VKS = ["shield", "joinsplit", "unshield"].every((c) => existsSync(vkP
 
 if (!HAVE_VKS) {
   console.warn(
-    "\n⚠️  ZK VERIFYING KEYS ABSENT — verifier-parity VK byte-shape tests are SKIPPED.\n" +
+    "\n⚠️  ZK VERIFYING KEYS ABSENT, verifier-parity VK byte-shape tests are SKIPPED.\n" +
       "    `pnpm test:zk` hard-fails on missing artifacts before this suite runs.\n",
   );
 }
@@ -42,7 +42,7 @@ describe.skipIf(!HAVE_VKS)("verifier-parity oracle: real VK byte-shape", () => {
 describe("verifier-parity oracle: snarkjs → Soroban encoding", () => {
   it("a proof encodes to the exact Soroban byte shape", () => {
     // Synthetic-but-well-formed Groth16 proof (affine points: G1 z=1, G2 z=[1,0]).
-    // Self-contained on purpose — no longer depends on the cut "trivial" circuit's
+    // Self-contained on purpose, no longer depends on the cut "trivial" circuit's
     // build artifacts; it exercises the same proofToSoroban byte-shape encoding.
     const proof = {
       pi_a: ["1", "2", "1"],

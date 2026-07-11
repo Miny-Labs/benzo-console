@@ -1,5 +1,5 @@
 /**
- * Nav model — the single source of truth for the sidebar + command bar, and which
+ * Nav model, the single source of truth for the sidebar + command bar, and which
  * screens are exposed in each build mode. In **real mode** the console only shows
  * screens that actually talk to the eERC backend (auth/onboarding/treasury/payroll);
  * the rest (Overview, Contractors, Invoices, one-off Pay, Approvals, Grants, Audit,

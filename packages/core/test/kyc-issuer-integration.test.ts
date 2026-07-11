@@ -2,7 +2,7 @@
  * End-to-end KYC pipeline: CredentialIssuer (the re-issuer that turns a verified
  * identity tier into a signed credential) → the real kyc_credential circuit.
  * Proves that a credential minted by @benzo/kyc's CredentialIssuer verifies in
- * ZK and surfaces the assurance tier as credType (public input #1) — the value
+ * ZK and surfaces the assurance tier as credType (public input #1), the value
  * the on-chain admit_by_proof tier gate binds. Self-skips without artifacts.
  */
 import { existsSync, readFileSync } from "node:fs";

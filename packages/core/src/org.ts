@@ -6,7 +6,7 @@
  * `joinsplit_org` proof carrying ≥ threshold distinct member EdDSA signatures
  * over the spend message. This module builds that member set (a Baby-Jubjub
  * EdDSA keypair per member + a Merkle tree of member key-ids) and signs the
- * spend message — the cryptographic embodiment of a maker-checker approval.
+ * spend message, the cryptographic embodiment of a maker-checker approval.
  *
  * Browser-safe: circomlibjs (eddsa + poseidon) is already a dependency. The
  * heavy WASM builders are lazily constructed once and reused.
@@ -20,7 +20,7 @@ import { FIELD_MODULUS } from "./crypto/poseidon2.js";
 import { toHex } from "./crypto/bytes.js";
 import { randomBytes } from "./crypto/random.js";
 
-/** Depth of the in-circuit member tree — must match JoinSplitOrg(_, ML=16). */
+/** Depth of the in-circuit member tree, must match JoinSplitOrg(_, ML=16). */
 export const ORG_MEMBER_DEPTH = 16;
 
 // Lazy circomlibjs singletons (WASM init is ~50ms; do it once).
@@ -39,7 +39,7 @@ export interface OrgMember {
   /** Public key coordinates (decimal field elements). */
   Ax: bigint;
   Ay: bigint;
-  /** Member-tree leaf = Poseidon(Ax, Ay) — the identity committed on-chain. */
+  /** Member-tree leaf = Poseidon(Ax, Ay), the identity committed on-chain. */
   keyId: bigint;
 }
 
@@ -109,7 +109,7 @@ export async function buildOrgIdentity(
  * The message ≥threshold members must sign for a 2-in/2-out org spend:
  *   spendMessage = Poseidon(nullifier0, nullifier1, outCommitment0, outCommitment1).
  * Derived from the (public) nullifiers + output commitments, so any change to
- * the spend invalidates the signatures — they must be collected LAST.
+ * the spend invalidates the signatures, they must be collected LAST.
  */
 export async function orgSpendMessage(
   n0: bigint,
@@ -139,7 +139,7 @@ export async function signOrgSpend(
  * Deterministically derive an org identity (member EdDSA keys + group spend-auth
  * secret) from a single root seed, domain-separated by orgId. HKDF is pure, so
  * the SAME (seed, orgId) yields the SAME identity in the browser, the CLI, and a
- * self-hosted BFF — the deployed and self-hosted apps interoperate, and a member
+ * self-hosted BFF, the deployed and self-hosted apps interoperate, and a member
  * can re-derive their key by signing once (no second secret to store). Each
  * member's `prv` is the key that member downloads / holds for self-signing.
  *
@@ -147,7 +147,7 @@ export async function signOrgSpend(
  * `set_member_root`) and matches the org notes' `recipientPk`.
  */
 export async function deriveOrgIdentity(opts: {
-  /** root IKM — the org owner's account seed or a dedicated org root secret. */
+  /** root IKM, the org owner's account seed or a dedicated org root secret. */
   seed: Uint8Array;
   /** namespace so one seed can host distinct orgs. */
   orgId: string | number;

@@ -1,11 +1,11 @@
 /**
- * Sponsored reserves (CAP-33) — gasless onboarding.
+ * Sponsored reserves (CAP-33), gasless onboarding.
  *
  * A new Stellar account normally needs ~1 XLM of base reserve before it can
  * exist or hold a USDC trustline. That is the single biggest friction for a
  * web2 user who has never heard of XLM. With sponsored reserves, Benzo's
  * sponsor account pays the reserve while the user's account starts at a 0 XLM
- * balance — the user funds nothing and signs once.
+ * balance, the user funds nothing and signs once.
  *
  * The on-chain shape is a three-operation sandwich:
  *   beginSponsoringFutureReserves(sponsoredId = newAccount)   [signed by sponsor]
@@ -30,7 +30,7 @@ export interface SponsoredCreateAccountParams {
 
 /**
  * Build the begin/create/end operation sandwich that creates `newAccount`
- * with its base reserve paid by `sponsor`. Pure — returns operations to drop
+ * with its base reserve paid by `sponsor`. Pure, returns operations to drop
  * into a TransactionBuilder; the caller loads the source account, sets fee +
  * timebounds, and collects both signatures.
  */
