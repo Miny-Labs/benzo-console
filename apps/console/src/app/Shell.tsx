@@ -3,29 +3,17 @@
  * (workspace switcher, ⌘K search, live network badge, mask-eye, bell, avatar),
  * and the routed content area with the cursor-interactive canvas behind the cards.
  */
-import {
-  ArrowUpRight,
-  Bell,
-  ChevronDown,
-  Eye,
-  EyeOff,
-  FileText,
-  LayoutDashboard,
-  ScrollText,
-  Settings,
-  ShieldCheck,
-  Users,
-  Wallet,
-  CheckCheck,
-} from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Bell, CheckCheck, ChevronDown, Eye, EyeOff, Settings, Users } from "lucide-react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { StageVideo } from "../ui/StageVideo";
 import { CommandBar } from "./CommandBar";
 import { AvalancheMark, Logo } from "../ui/Logo";
 import { NetworkMenu } from "./NetworkMenu";
 import { useConsole } from "../lib/store";
+import { DEMO_MODE } from "../demo/flag";
+import { REAL_HOME, visibleNavGroups, visibleNavItems } from "./nav";
 import { formatAddress } from "../lib/format";
 import { Dashboard } from "../screens/Dashboard";
 import { Approvals } from "../screens/Approvals";
@@ -213,21 +201,28 @@ export function Shell() {
         {/* body: sidebar nav + routed content */}
         <div className="flex flex-1 overflow-hidden">
           <aside className="flex w-[240px] flex-none flex-col gap-1 border-r border-border bg-surface px-3.5 py-4">
-            <Eyebrow>Overview</Eyebrow>
-            <NavItem to="/" icon={LayoutDashboard} label="Overview" />
-            <Eyebrow>Payments</Eyebrow>
-            <NavItem to="/contractors" icon={Users} label="Contractors" />
-            <NavItem to="/payroll" icon={Users} label="Payroll" />
-            <NavItem to="/invoices" icon={FileText} label="Invoices" />
-            <NavItem to="/pay" icon={ArrowUpRight} label="One-off payment" />
-            <Eyebrow>Operations</Eyebrow>
-            <NavItem to="/approvals" icon={CheckCheck} label="Approvals" badge={pending || undefined} />
-            <NavItem to="/treasury" icon={Wallet} label="Treasury" />
-            <Eyebrow>Compliance</Eyebrow>
-            <NavItem to="/grants" icon={ShieldCheck} label="Auditor access" />
-            <NavItem to="/audit" icon={ScrollText} label="Audit log" />
+            {visibleNavGroups().map((group) => (
+              <Fragment key={group}>
+                <Eyebrow>{group}</Eyebrow>
+                {visibleNavItems()
+                  .filter((item) => !item.footer && item.group === group)
+                  .map((item) => (
+                    <NavItem
+                      key={item.to}
+                      to={item.to}
+                      icon={item.icon}
+                      label={item.label}
+                      badge={item.to === "/approvals" ? pending || undefined : undefined}
+                    />
+                  ))}
+              </Fragment>
+            ))}
             <div className="flex-1" />
-            <NavItem to="/settings" icon={Settings} label="Settings & team" />
+            {visibleNavItems()
+              .filter((item) => item.footer)
+              .map((item) => (
+                <NavItem key={item.to} to={item.to} icon={item.icon} label={item.label} />
+              ))}
             <div className="mt-auto flex items-center justify-center gap-1.5 border-t border-border/60 pt-3 text-[11px] font-medium text-[#8a9099]" data-testid="built-on-avalanche">
               <AvalancheMark size={13} /> Built on Avalanche
             </div>
@@ -237,18 +232,30 @@ export function Shell() {
             <main className="no-scrollbar relative z-10 h-full overflow-y-auto px-5 py-6">
               {activeOrg ? (
                 <Routes location={loc} key={loc.pathname}>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/approvals" element={<Approvals />} />
-                  <Route path="/contractors" element={<Contractors />} />
-                  <Route path="/payroll" element={<Payroll />} />
-                  <Route path="/invoices" element={<Invoices />} />
-                  <Route path="/pay" element={<Pay />} />
-                  <Route path="/treasury" element={<Treasury />} />
-                  <Route path="/grants" element={<Grants />} />
-                  <Route path="/audit" element={<AuditLog />} />
-                  <Route path="/claim" element={<InviteClaim />} />
-                  <Route path="/settings" element={<SettingsScreen />} />
-                  <Route path="*" element={<Dashboard />} />
+                  {DEMO_MODE ? (
+                    <>
+                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/approvals" element={<Approvals />} />
+                      <Route path="/contractors" element={<Contractors />} />
+                      <Route path="/payroll" element={<Payroll />} />
+                      <Route path="/invoices" element={<Invoices />} />
+                      <Route path="/pay" element={<Pay />} />
+                      <Route path="/treasury" element={<Treasury />} />
+                      <Route path="/grants" element={<Grants />} />
+                      <Route path="/audit" element={<AuditLog />} />
+                      <Route path="/claim" element={<InviteClaim />} />
+                      <Route path="/settings" element={<SettingsScreen />} />
+                      <Route path="*" element={<Dashboard />} />
+                    </>
+                  ) : (
+                    <>
+                      {/* Real mode: only the backend-backed screens; everything else
+                          is demo-only and redirects to the treasury landing. */}
+                      <Route path="/payroll" element={<Payroll />} />
+                      <Route path="/treasury" element={<Treasury />} />
+                      <Route path="*" element={<Navigate to={REAL_HOME} replace />} />
+                    </>
+                  )}
                 </Routes>
               ) : (
                 <NoOrgPlaceholder address={session?.user.address} />
