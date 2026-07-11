@@ -1,818 +1,537 @@
-/**
- * Payroll - confidential batch runs. Each batch hides individual salaries on-chain
- * (one shielded transfer per person) while the employer can still prove the total.
- *
- * Presentation is calm dense enterprise-finance: every run is a TABLE ROW
- * (Period · People · Total · Approval · Settlement · Actions), not a giant card.
- * Crypto/proof detail lives behind a "Technical details" disclosure inside the
- * per-run detail drawer.
- *
- * The run flow is unchanged: "Approve & run" is ONE animated pass that proves
- * funded (ORGBAL) + policy (SPENDCAP/screen) + computation (PAYCOMP) + anonymous
- * approval (ORGAUTH) and settles the batch, shown through the shared full-screen
- * send ceremony with per-recipient progress. The row action reads "Approve" when
- * this operator's approval is NOT the final required one (nothing settles yet) and
- * "Approve & run" only when it settles the run. Run creation lives here too.
- */
-import { useEffect, useReducer, useState, type ReactNode } from "react";
-import { Check, CheckCheck, ChevronDown, Download, Plus, ReceiptText, ShieldCheck, Users } from "lucide-react";
-import { useReducedMotion } from "framer-motion";
-import type { ApprovalPolicy, PayrollBatch, PayrollLine } from "@benzo/types";
-import { initialPaymentState, type PaymentPhase, paymentReducer } from "@benzo/ui/payment-state";
-import { api, type OnChainRef } from "../lib/api";
-import { useConsole, useCounterpartyName } from "../lib/store";
-import { explorerTxUrl, fmtUsd, friendlyError } from "../lib/format";
-import { AnimatePresence, EASE, Screen, motion, spring } from "../ui/motion";
-import { OnChainDetail } from "../ui/onchain";
-import { SendCeremony } from "../ui/SendCeremony";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, CheckCircle2, Pause, Play, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { Link } from "react-router-dom";
+import type {
+  CreatePayrollRunResponse,
+  PayrollProgressCounts,
+  PayrollRunItem,
+  PayrollRunResponse,
+  PayrollRunStatus,
+  PayrollToken,
+  TreasuryUnderfundedError,
+} from "@benzo/types";
+import { api, isTreasuryUnderfundedError, type PayrollProgressSubscription } from "../lib/api";
+import { formatAddress, friendlyError } from "../lib/format";
+import { useConsole } from "../lib/store";
+import { Screen } from "../ui/motion";
 import {
-  Amount, Button, EmptyState, Input, Modal, PageHeader, Pill,
-  Skeleton, StatusPill, Table, Td, Th, Tr, useToast,
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  PageHeader,
+  Select,
+  Skeleton,
+  StatusPill,
+  Table,
+  Td,
+  Textarea,
+  Th,
+  Tr,
+  useToast,
 } from "../ui/primitives";
 
-/** On-chain refs captured from the automated pass, per proof, for the receipt drill-down. */
-type RunRefs = { funded?: OnChainRef; approval?: OnChainRef; computation?: OnChainRef };
-/** What actually settled, surfaced in the ceremony receipt. */
-type RunOutcome = { total: number; paid: number; failed: number; onChain: boolean; txHash?: string; unverifiedPolicy?: number };
+const PAYROLL_RUN_KEY_PREFIX = "benzo.console.payroll.currentRun";
+const DEFAULT_CSV = "recipient,amount\n@aisha,8500\n@diego,6200\n@priya,9000";
 
-const period = () => new Date().toISOString().slice(0, 7); // e.g. 2026-06
+const TOKEN_LABEL: Record<PayrollToken, string> = {
+  usdc: "USDC",
+  eurc: "EURC",
+};
 
-const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-
-/** "2026-07" (or "2026-07 payroll") → "July 2026". Unrecognised labels pass through. */
-function monthYear(label: string): string {
-  const m = /(\d{4})-(\d{1,2})/.exec(label);
-  if (!m) return label.replace(/payroll/gi, "").trim() || label;
-  return `${MONTHS_LONG[Number(m[2]) - 1] ?? m[2]} ${m[1]}`;
+function storageKey(orgId: string): string {
+  return `${PAYROLL_RUN_KEY_PREFIX}:${orgId}`;
 }
 
-const approvedCount = (b: PayrollBatch) => (b.approvals ?? []).filter((a) => a.decision === "approved").length;
-const hasFailed = (b: PayrollBatch) => b.lines.some((l) => l.status === "failed");
-
-/**
- * Best-effort required-approver count so the row action can predict whether THIS
- * approval settles the run. Prefers a proven threshold, then the org's approval
- * policy (stage minimums + release gate), and defaults to a single approval. The
- * runtime stays honest regardless: a non-final approval closes the ceremony
- * without ever claiming a settlement it didn't do.
- */
-function requiredApprovers(b: PayrollBatch, policies: ApprovalPolicy[]): number {
-  if (b.approvalProof?.threshold) return b.approvalProof.threshold;
-  const list = policies ?? [];
-  // No per-batch policy link exists, so predict from the policy that ALWAYS
-  // applies (empty conditions = catch-all) rather than arbitrary array order.
-  // The runtime still enforces the real threshold regardless.
-  const pol = list.find((p) => p.conditions.length === 0) ?? list[0];
-  if (pol) return Math.max(1, pol.steps.reduce((s, st) => s + st.minApprovers, 0) + (pol.releaseGate?.minApprovers ?? 0));
-  return 1;
-}
-/** Does this operator's approval settle the run (approvals already met, or this one reaches the threshold)? */
-function settlesOnApprove(b: PayrollBatch, policies: ApprovalPolicy[]): boolean {
-  return b.status === "approved" || approvedCount(b) + 1 >= requiredApprovers(b, policies);
-}
-/** Precise row action label: "Retry failed" · "Approve" (not final) · "Approve & run" (settles). */
-function rowAction(b: PayrollBatch, policies: ApprovalPolicy[]): string {
-  if (b.status === "processing" && hasFailed(b)) return "Retry failed";
-  return settlesOnApprove(b, policies) ? "Approve & run" : "Approve";
+function terminalStatus(status?: PayrollRunStatus): boolean {
+  return status === "complete" || status === "failed";
 }
 
-/** One primary status per dimension, in plain money-movement language. */
-function approvalStatus(b: PayrollBatch): string {
-  if (b.status === "draft") return "draft";
-  if (b.status === "cancelled") return "cancelled";
-  if (b.status === "needs_approval") return "awaiting_approval";
-  return "approved"; // approved · processing · completed
+function progressFromValidation(validation: CreatePayrollRunResponse | null): PayrollProgressCounts | null {
+  if (!validation) return null;
+  return {
+    total: validation.summary.total,
+    pending: validation.summary.valid,
+    proving: 0,
+    submitted: 0,
+    confirmed: 0,
+    failed: validation.summary.invalid,
+    proved: 0,
+  };
 }
-function settlementStatus(b: PayrollBatch): string {
-  if (b.status === "completed") return "completed";
-  if (b.status === "cancelled") return "cancelled";
-  if (b.status === "processing") return hasFailed(b) ? "failed" : "processing";
-  return "not_started"; // draft · needs_approval · approved
+
+function summaryFromRun(runState: PayrollRunResponse | null): CreatePayrollRunResponse["summary"] | null {
+  if (!runState) return null;
+  const invalid = runState.items.filter((item) => item.status === "failed").length;
+  return {
+    total: runState.run.itemCount,
+    valid: Math.max(0, runState.run.itemCount - invalid),
+    invalid,
+    totalAmount: runState.run.totalAmount,
+    token: runState.run.token,
+    tokenId: runState.run.tokenId,
+  };
+}
+
+function parseTokenAmount(value: string): bigint {
+  const clean = value.trim().replace(/,/g, "");
+  const [whole = "0", frac = ""] = clean.split(".");
+  return BigInt(whole || "0") * 1_000_000n + BigInt(frac.padEnd(6, "0").slice(0, 6) || "0");
+}
+
+function formatTokenAmount(minor: bigint): string {
+  const neg = minor < 0n;
+  const abs = neg ? -minor : minor;
+  const whole = abs / 1_000_000n;
+  const frac = (abs % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return `${neg ? "-" : ""}${whole}${frac ? `.${frac}` : ""}`;
+}
+
+function underfundedShortfall(body: TreasuryUnderfundedError): string | null {
+  try {
+    const diff = parseTokenAmount(body.requiredAmount) - parseTokenAmount(body.availableAmount);
+    return diff > 0n ? formatTokenAmount(diff) : null;
+  } catch {
+    return null;
+  }
+}
+
+function amountLabel(amount: string, token: PayrollToken, masked = false): string {
+  return masked ? "••••" : `${amount} ${TOKEN_LABEL[token]}`;
+}
+
+function currentStatus(runState: PayrollRunResponse | null, validation: CreatePayrollRunResponse | null): PayrollRunStatus | null {
+  return runState?.run.status ?? validation?.status ?? null;
+}
+
+function currentRunId(runState: PayrollRunResponse | null, validation: CreatePayrollRunResponse | null): string | null {
+  return runState?.run.id ?? validation?.runId ?? null;
+}
+
+function updateRunState(
+  current: PayrollRunResponse | null,
+  status: PayrollRunStatus,
+  progress: PayrollProgressCounts,
+): PayrollRunResponse | null {
+  if (!current) return current;
+  return {
+    ...current,
+    run: { ...current.run, status, updatedAt: new Date().toISOString() },
+    progress,
+  };
 }
 
 export function Payroll() {
   const toast = useToast();
-  const { payrolls, counterparties, policies, masked, refresh, loading } = useConsole();
-  const name = useCounterpartyName();
-  // Count recipients with no on-chain payout material on file - those lines can't
-  // settle privately, so the approver sees it BEFORE an irreversible run, not after.
-  const unpayableIds = (b: PayrollBatch) =>
-    new Set(b.lines.filter((l) => !counterparties.find((c) => c.id === l.counterpartyId)?.paymentAddress?.shielded).map((l) => l.counterpartyId));
-  const unpayableCount = (b: PayrollBatch) => unpayableIds(b).size;
-  const visiblePayrolls = [...payrolls].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-  // Allowlisted contractors with a rate card = the roster a New run pulls from.
-  const payableContractors = counterparties.filter((c) => c.type === "contractor" && c.payRate && c.status === "allowlisted");
+  const { session, masked } = useConsole();
+  const activeOrg = session?.activeOrg ?? null;
+  const activeOrgId = activeOrg?.id ?? null;
 
-  const [cap, setCap] = useState("5000.00");
-  const [creating, setCreating] = useState(false);
-  // Detail drawer target (batch id) - opened by the row "Details" action and by the
-  // ceremony's "View register".
-  const [open, setOpen] = useState<string | null>(null);
-  // Confirm gate for the highest-value irreversible action (Approve & run).
-  const [confirmRun, setConfirmRun] = useState<PayrollBatch | null>(null);
-  // On-chain refs captured from this session's automated pass, keyed by batch id.
-  const [refs, setRefs] = useState<Record<string, RunRefs>>({});
-  // The single full-screen ceremony, driven by the shared payment-state machine.
-  const [paymentState, dispatchPayment] = useReducer(paymentReducer, initialPaymentState);
-  const [ceremonyBatch, setCeremonyBatch] = useState<PayrollBatch | null>(null);
-  const [runOutcome, setRunOutcome] = useState<RunOutcome | null>(null);
-  const ceremonyOpen = paymentState.phase !== "idle";
-  const activeRefs = ceremonyBatch ? refs[ceremonyBatch.id] : undefined;
-  const drawerBatch = open ? visiblePayrolls.find((b) => b.id === open) ?? null : null;
+  const [csv, setCsv] = useState(DEFAULT_CSV);
+  const [token, setToken] = useState<PayrollToken>("usdc");
+  const [rowRecipient, setRowRecipient] = useState("");
+  const [rowAmount, setRowAmount] = useState("");
+  const [validation, setValidation] = useState<CreatePayrollRunResponse | null>(null);
+  const [runState, setRunState] = useState<PayrollRunResponse | null>(null);
+  const [underfunded, setUnderfunded] = useState<TreasuryUnderfundedError | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [validating, setValidating] = useState(false);
+  const [hydrating, setHydrating] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [pausing, setPausing] = useState(false);
+  const [resuming, setResuming] = useState(false);
+  const subscriptionRef = useRef<PayrollProgressSubscription | null>(null);
 
-  // One click = one approval step, but that approval automatically proves
-  // funded + policy + computation + anonymous-approval and settles when it's the
-  // final required step. The whole thing is a single animated pass; the ceremony
-  // fails clearly if settlement doesn't happen, never claiming a settle it didn't do.
-  async function approveAndRun(b: PayrollBatch) {
-    setCeremonyBatch(b);
-    setRunOutcome(null);
-    dispatchPayment({ type: "START" }); // building
-    dispatchPayment({ type: "WITNESS_READY" }); // proving each salary private
-    const captured: RunRefs = {};
+  const runId = currentRunId(runState, validation);
+  const status = currentStatus(runState, validation);
+  const summary = validation?.summary ?? summaryFromRun(runState);
+  const items = runState?.items ?? validation?.items ?? [];
+  const progress = runState?.progress ?? progressFromValidation(validation);
+  const displayToken = summary?.token ?? token;
+  const canStart = !!runId && status === "ready" && (summary?.invalid ?? 0) === 0;
+  const canPause = !!runId && status === "running";
+  const canResume = !!runId && status === "paused";
+
+  const closeSubscription = useCallback(() => {
+    subscriptionRef.current?.close();
+    subscriptionRef.current = null;
+  }, []);
+
+  const hydrateRun = useCallback(async (id: string, silent = false) => {
+    if (!silent) setHydrating(true);
     try {
-      // Fold the four manual proofs into the pass. funded/policy/computation are
-      // independent on-chain pre-flight proofs - prove them together.
-      const [funded, policy, computation] = await Promise.all([
-        api.proveFunded(b.id),
-        api.provePolicy(b.id, cap),
-        api.proveComputation(b.id),
-      ]);
-      if (funded.ref) captured.funded = funded.ref;
-      if (computation.ref) captured.computation = computation.ref;
-
-      // In-ZK spending policy (Z3 cap + Z4 sanctions), proven per line. A provable
-      // hard block - over the cap or sanctioned - stops the run BEFORE it settles
-      // rather than quietly paying it; proofs that didn't reach the chain are
-      // carried into the receipt as a note. Amounts/recipients stay hidden.
-      const policyLines = policy.lines ?? [];
-      const over = policyLines.filter((l) => l.capProof?.onChain && !l.capProof.withinCap).length;
-      const flagged = policyLines.filter((l) => l.screenProof?.onChain && !l.screenProof.innocent).length;
-      const unverifiedPolicy = policyLines.filter((l) => (l.capProof && !l.capProof.onChain) || (l.screenProof && !l.screenProof.onChain)).length;
-      if (over || flagged) {
-        const summary = [over ? `${over} over the ${cap} cap` : "", flagged ? `${flagged} sanctioned` : ""].filter(Boolean).join(", ");
-        setRefs((m) => ({ ...m, [b.id]: { ...m[b.id], ...captured } }));
-        toast({ title: `Policy blocked this run: ${summary}`, tone: "danger" });
-        dispatchPayment({ type: "FAIL", error: `Policy blocked this run: ${summary}. No payouts settled - fix the flagged lines and retry.` });
-        await refresh();
-        return;
-      }
-
-      // The click is this operator's approval (proposer != approver, enforced
-      // server-side). It settles only when every step + the release gate pass.
-      const approved = await api.approvePayroll(b.id);
-      const prog = approved.progress;
-      if (prog && !prog.satisfied) {
-        // Not the final step - an approval was recorded, nothing settled. Be honest:
-        // close the ceremony rather than animate a settlement that didn't occur.
-        setRefs((m) => ({ ...m, [b.id]: { ...m[b.id], ...captured } }));
-        dispatchPayment({ type: "RESET" });
-        toast({ title: `Approved · now needs ${prog.nextRole}${prog.nextKind === "release" ? " to release" : ""}`, tone: "success" });
-        await refresh();
-        return;
-      }
-
-      // Final approval - prove the anonymous approver threshold (ORGAUTH), then
-      // reflect the real settlement outcome through the ceremony.
-      const approval = await api.proveApproval(b.id);
-      if (approval.ref) captured.approval = approval.ref;
-      setRefs((m) => ({ ...m, [b.id]: { ...m[b.id], ...captured } }));
-
-      // Point the ceremony at the SETTLED batch, not the pending draft we opened
-      // with, so the per-recipient roster reflects real paid/failed states.
-      setCeremonyBatch(approved);
-      dispatchPayment({ type: "PROOF_READY" }); // submitting N transfers
-      const settledTx = approved.lines.find((l) => l.txHash)?.txHash ?? "";
-      dispatchPayment({ type: "SUBMITTED", txHash: settledTx });
-
-      const failed = approved.lines.filter((l) => l.status === "failed").length;
-      const paid = approved.lines.filter((l) => l.status === "paid").length;
-      const onChain = approved.lines.some((l) => l.onChain);
-      setRunOutcome({ total: approved.lines.length, paid, failed, onChain, txHash: settledTx || undefined, unverifiedPolicy });
-
-      if (failed || !onChain) {
-        dispatchPayment({
-          type: "FAIL",
-          error: failed ? `${failed} payout${failed === 1 ? "" : "s"} didn't settle. Fix and retry.` : "Payroll did not settle on-chain.",
-        });
-      } else {
-        dispatchPayment({ type: "CONFIRMED", result: approved });
-      }
-      await refresh();
+      const next = await api.getPayrollRun(id);
+      setRunState(next);
+      setValidation(null);
+      setToken(next.run.token);
+      setError(null);
+      return next;
     } catch (e) {
-      dispatchPayment({ type: "FAIL", error: friendlyError(e) });
-      await refresh();
-    }
-  }
-
-  function closeCeremony() {
-    dispatchPayment({ type: "RESET" });
-    setCeremonyBatch(null);
-    setRunOutcome(null);
-  }
-
-  // New run - amounts are COMPUTED server-side from each rate card; we only pick who's in.
-  async function createRun() {
-    if (payableContractors.length === 0) {
-      toast({ title: "No payable contractors on the roster yet. Add rates in Contractors first.", tone: "danger" });
-      return;
-    }
-    setCreating(true);
-    try {
-      const batch = await api.createPayroll({
-        period: period(),
-        source: "manual",
-        lines: payableContractors.map((c) => ({ counterpartyId: c.id })),
-      });
-      toast({ title: `${monthYear(period())} run drafted · ${batch.lines.length} contractor${batch.lines.length === 1 ? "" : "s"} · ${fmtUsd(batch.total.amount)}`, tone: "success" });
-      await refresh();
-    } catch (e) {
-      toast({ title: friendlyError(e), tone: "danger" });
+      const msg = friendlyError(e, "Could not load this payroll run.");
+      setError(msg);
+      if (!silent) toast({ title: msg, tone: "danger" });
+      return null;
     } finally {
-      setCreating(false);
+      if (!silent) setHydrating(false);
     }
-  }
+  }, [toast]);
 
-  function download(fileName: string, text: string, type: string) {
-    const blob = new Blob([text], { type });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  useEffect(() => {
+    closeSubscription();
+    setValidation(null);
+    setRunState(null);
+    setUnderfunded(null);
+    setError(null);
+    if (!activeOrgId) return undefined;
+    const stored = localStorage.getItem(storageKey(activeOrgId));
+    if (stored) void hydrateRun(stored);
+    return closeSubscription;
+  }, [activeOrgId, closeSubscription, hydrateRun]);
 
-  function downloadPayslips(b: PayrollBatch) {
-    const rows = b.lines.map((l) => ({
-      period: b.period,
-      contractor: name(l.counterpartyId),
-      gross: l.amount,
-      status: l.status,
-      txHash: l.txHash,
-      error: l.error,
-    }));
-    download(`benzo-payslips-${b.period}.json`, JSON.stringify(rows, null, 2), "application/json");
-  }
+  useEffect(() => {
+    closeSubscription();
+    if (!runId || status !== "running") return closeSubscription;
+    subscriptionRef.current = api.subscribePayrollProgress(
+      runId,
+      (event) => {
+        setRunState((current) => updateRunState(current, event.status, event.progress));
+        if (terminalStatus(event.status)) void hydrateRun(runId, true);
+      },
+      (e) => setError(friendlyError(e, "Could not update payroll progress.")),
+    );
+    return closeSubscription;
+  }, [runId, status, closeSubscription, hydrateRun]);
 
-  function exportCsv(b: PayrollBatch) {
-    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const rows = [
-      ["period", "contractor", "amount_units", "status", "tx_hash", "error"],
-      ...b.lines.map((l) => [b.period, name(l.counterpartyId), l.amount, l.status, l.txHash ?? "", l.error ?? ""]),
-    ];
-    download(`benzo-payroll-${b.period}.csv`, rows.map((r) => r.map(esc).join(",")).join("\n"), "text/csv");
-  }
+  const addRow = useCallback(() => {
+    const recipient = rowRecipient.trim();
+    const amount = rowAmount.trim();
+    if (!recipient || !amount) return;
+    setCsv((current) => {
+      const trimmed = current.trim();
+      const prefix = trimmed ? `${trimmed}\n` : "recipient,amount\n";
+      return `${prefix}${recipient},${amount}`;
+    });
+    setRowRecipient("");
+    setRowAmount("");
+  }, [rowAmount, rowRecipient]);
+
+  const validateRun = useCallback(async () => {
+    if (!activeOrgId) return;
+    setValidating(true);
+    setUnderfunded(null);
+    setError(null);
+    setRunState(null);
+    closeSubscription();
+    try {
+      const created = await api.createPayrollRun(activeOrgId, { csv, token });
+      setValidation(created);
+      setToken(created.token);
+      localStorage.setItem(storageKey(activeOrgId), created.runId);
+      toast({
+        title: created.status === "ready"
+          ? `Validated ${created.summary.valid} row${created.summary.valid === 1 ? "" : "s"}`
+          : `Validation found ${created.summary.invalid} issue${created.summary.invalid === 1 ? "" : "s"}`,
+        tone: created.status === "ready" ? "success" : "danger",
+      });
+      void hydrateRun(created.runId, true);
+    } catch (e) {
+      const msg = friendlyError(e, "Could not validate this payroll CSV.");
+      setError(msg);
+      toast({ title: msg, tone: "danger" });
+    } finally {
+      setValidating(false);
+    }
+  }, [activeOrgId, closeSubscription, csv, hydrateRun, toast, token]);
+
+  const startRun = useCallback(async () => {
+    if (!runId) return;
+    setStarting(true);
+    setUnderfunded(null);
+    setError(null);
+    try {
+      const started = await api.startPayrollRun(runId);
+      setRunState((current) => updateRunState(current, started.status, started.progress));
+      if (!runState) void hydrateRun(runId, true);
+      toast({ title: `Payroll started · ${started.totalPending} pending`, tone: "success" });
+    } catch (e) {
+      if (isTreasuryUnderfundedError(e)) {
+        setUnderfunded(e.body);
+        setError(null);
+      } else {
+        const msg = friendlyError(e, "Could not start this payroll run.");
+        setError(msg);
+        toast({ title: msg, tone: "danger" });
+      }
+    } finally {
+      setStarting(false);
+    }
+  }, [hydrateRun, runId, runState, toast]);
+
+  const pauseRun = useCallback(async () => {
+    if (!runId) return;
+    setPausing(true);
+    try {
+      const paused = await api.pausePayrollRun(runId);
+      closeSubscription();
+      setRunState((current) => updateRunState(current, paused.status, paused.progress));
+      toast({ title: "Payroll paused", tone: "warning" });
+    } catch (e) {
+      const msg = friendlyError(e, "Could not pause this payroll run.");
+      setError(msg);
+      toast({ title: msg, tone: "danger" });
+    } finally {
+      setPausing(false);
+    }
+  }, [closeSubscription, runId, toast]);
+
+  const resumeRun = useCallback(async () => {
+    if (!runId) return;
+    setResuming(true);
+    setUnderfunded(null);
+    try {
+      const resumed = await api.resumePayrollRun(runId);
+      setRunState((current) => updateRunState(current, resumed.status, resumed.progress));
+      toast({ title: `Payroll resumed · ${resumed.totalPending} pending`, tone: "success" });
+    } catch (e) {
+      if (isTreasuryUnderfundedError(e)) {
+        setUnderfunded(e.body);
+        setError(null);
+      } else {
+        const msg = friendlyError(e, "Could not resume this payroll run.");
+        setError(msg);
+        toast({ title: msg, tone: "danger" });
+      }
+    } finally {
+      setResuming(false);
+    }
+  }, [runId, toast]);
+
+  const runLabel = useMemo(() => {
+    if (!runId) return "No run yet";
+    return `Run ${runId.slice(0, 10)}${runId.length > 10 ? "..." : ""}`;
+  }, [runId]);
 
   return (
     <Screen>
-      <SendCeremony
-        open={ceremonyOpen}
-        state={paymentState}
-        eyebrow={ceremonyBatch ? `${monthYear(ceremonyBatch.period)} payroll run` : "Payroll run"}
-        details={
-          ceremonyBatch ? (
-            <CeremonyRoster batch={ceremonyBatch} name={name} masked={masked} phase={paymentState.phase} unpayable={unpayableIds(ceremonyBatch)} />
-          ) : undefined
-        }
-        receipt={
-          runOutcome ? (
-            <div className="space-y-2.5">
-              <div className="flex items-center gap-2 font-semibold text-white">
-                <ReceiptText size={15} /> {runOutcome.failed ? `${runOutcome.paid}/${runOutcome.total} settled` : `${runOutcome.paid} paid privately`}
-              </div>
-              <p className="text-white/56">
-                {runOutcome.onChain
-                  ? "Each salary settled privately on-chain. The total stays provable to an auditor; the individual amounts don't leak."
-                  : "No on-chain settlement was recorded for this run."}
-              </p>
-              {runOutcome.unverifiedPolicy ? (
-                <p className="text-warning" data-testid="policy-unverified-note">
-                  {runOutcome.unverifiedPolicy} policy proof{runOutcome.unverifiedPolicy === 1 ? "" : "s"} didn't verify on-chain - re-check before you rely on this run.
-                </p>
-              ) : null}
-              {activeRefs && (activeRefs.funded || activeRefs.approval || activeRefs.computation) ? (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-white/10 pt-2.5">
-                  {activeRefs.funded ? <OnChainDetail refData={activeRefs.funded} label="Funded proof" /> : null}
-                  {activeRefs.approval ? <OnChainDetail refData={activeRefs.approval} label="Approval proof" /> : null}
-                  {activeRefs.computation ? <OnChainDetail refData={activeRefs.computation} label="Computation proof" /> : null}
-                </div>
-              ) : null}
-            </div>
-          ) : undefined
-        }
-        primaryAction={
-          paymentState.phase === "confirmed" || paymentState.phase === "failed"
-            ? {
-                label: paymentState.phase === "confirmed" ? "Done" : "Close",
-                onClick: closeCeremony,
-                variant: paymentState.phase === "failed" ? "danger" : "primary",
-              }
-            : undefined
-        }
-        secondaryAction={
-          (paymentState.phase === "confirmed" || paymentState.phase === "failed") && ceremonyBatch
-            ? {
-                label: "View register",
-                onClick: () => {
-                  const id = ceremonyBatch.id;
-                  closeCeremony();
-                  setOpen(id);
-                },
-                variant: "outline",
-              }
-            : undefined
-        }
-      />
-
       <PageHeader
         title="Payroll"
-        subtitle="Salaries private on-chain · total provable to an auditor"
-        action={
-          <Button onClick={createRun} loading={creating} disabled={payableContractors.length === 0} data-testid="new-run">
-            <Plus size={15} /> New run
-          </Button>
-        }
+        subtitle="CSV payroll, server-side proving, live encrypted settlement progress"
+        action={status ? <StatusPill status={status} /> : null}
       />
 
-      {loading ? (
-        <Table>
-          <thead>
-            <tr>
-              <Th>Period</Th>
-              <Th align="right">People</Th>
-              <Th align="right">Total</Th>
-              <Th>Approval</Th>
-              <Th>Settlement</Th>
-              <Th align="right">Actions</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {[0, 1, 2].map((i) => (
-              <Tr key={i}>
-                <Td><Skeleton className="h-4 w-32" /></Td>
-                <Td align="right"><Skeleton className="ml-auto h-4 w-6" /></Td>
-                <Td align="right"><Skeleton className="ml-auto h-4 w-20" /></Td>
-                <Td><Skeleton className="h-6 w-24" /></Td>
-                <Td><Skeleton className="h-6 w-20" /></Td>
-                <Td align="right"><Skeleton className="ml-auto h-8 w-28" /></Td>
-              </Tr>
-            ))}
-          </tbody>
-        </Table>
-      ) : payrolls.length === 0 ? (
-        <EmptyState
-          title="No payroll runs yet"
-          hint={payableContractors.length ? `New run pulls your ${payableContractors.length} allowlisted contractor${payableContractors.length === 1 ? "" : "s"} - amounts are computed from their rate cards.` : "Add allowlisted contractors with rate cards, then start a run here."}
-        />
+      {!activeOrg ? (
+        <EmptyState title="No active organization" hint="Choose or create an organization before running payroll." />
       ) : (
-        <>
-          <div className="mb-3 flex items-center gap-2 t-helper">
-            <ShieldCheck size={13} className="flex-none text-primary" />
-            Payroll runs after funding and approval checks pass.
-          </div>
-          <Table>
-            <thead>
-              <tr>
-                <Th>Period</Th>
-                <Th align="right">People</Th>
-                <Th align="right">Total</Th>
-                <Th>Approval</Th>
-                <Th>Settlement</Th>
-                <Th align="right">Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {visiblePayrolls.map((b) => {
-                const runnable = b.status === "needs_approval" || b.status === "approved" || b.status === "processing";
-                const partialApprovals = b.status === "needs_approval" && approvedCount(b) > 0;
-                return (
-                  <Tr key={b.id}>
-                    <Td>
-                      <div className="font-medium text-fg">{monthYear(b.period)} payroll</div>
-                      <div className="t-helper mt-0.5">via {b.source}</div>
-                    </Td>
-                    <Td align="right" className="tnum text-muted">{b.lines.length}</Td>
-                    <Td align="right">
-                      <span data-testid="payroll-total">
-                        {masked ? <span className="mask">••••</span> : <Amount minor={b.total.amount} tabular />}
-                      </span>
-                    </Td>
-                    <Td>
-                      <StatusPill status={approvalStatus(b)} />
-                      {partialApprovals ? (
-                        <div className="t-helper mt-1">{approvedCount(b)} of {requiredApprovers(b, policies)} signed</div>
-                      ) : null}
-                    </Td>
-                    <Td>
-                      <StatusPill status={settlementStatus(b)} />
-                    </Td>
-                    <Td align="right">
-                      <div className="flex items-center justify-end gap-2">
-                        {runnable ? (
-                          <Button size="sm" onClick={() => setConfirmRun(b)} data-testid="run-payroll">
-                            <CheckCheck size={14} /> {rowAction(b, policies)}
-                          </Button>
-                        ) : null}
-                        <Button size="sm" variant="outline" onClick={() => setOpen(b.id)} data-testid="open-details">
-                          Details
-                        </Button>
-                      </div>
-                    </Td>
-                  </Tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        </>
-      )}
-
-      {/* Per-run detail drawer: full register + downloads + the crypto/proof detail
-          folded behind a "Technical details" disclosure. */}
-      <Modal
-        open={!!drawerBatch}
-        onClose={() => setOpen(null)}
-        width="max-w-2xl"
-        title={
-          drawerBatch ? (
-            <span className="inline-flex items-center gap-2">
-              <Users size={15} className="text-primary" /> {monthYear(drawerBatch.period)} payroll
-            </span>
-          ) : (
-            "Payroll run"
-          )
-        }
-      >
-        {drawerBatch ? (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusPill status={approvalStatus(drawerBatch)} />
-                <StatusPill status={settlementStatus(drawerBatch)} />
-                {drawerBatch.status === "processing" && hasFailed(drawerBatch) ? (
-                  <span className="t-helper text-danger" data-testid="payroll-failed-note">Some payouts didn't settle - retry from the run row.</span>
-                ) : null}
-              </div>
-              <div className="flex items-center gap-4">
-                <button onClick={() => downloadPayslips(drawerBatch)} className="inline-flex items-center gap-1 rounded text-[12px] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40" data-testid="download-payslips" type="button">
-                  <Download size={13} /> Payslips
-                </button>
-                <button onClick={() => exportCsv(drawerBatch)} className="inline-flex items-center gap-1 rounded text-[12px] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40" data-testid="export-csv" type="button">
-                  <Download size={13} /> Export CSV
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2.5">
-              <Fact label="Recipients" value={drawerBatch.lines.length} />
-              <Fact label="Total" value={masked ? <span className="mask">••••</span> : <Amount minor={drawerBatch.total.amount} />} />
-              <Fact label="Source" value={<span className="capitalize">{drawerBatch.source}</span>} />
-            </div>
-
-            <div>
-              <div className="t-label mb-2 text-muted">Run register</div>
-              <Table>
-                <thead>
-                  <tr>
-                    <Th>Recipient</Th>
-                    <Th>Policy</Th>
-                    <Th>Status</Th>
-                    <Th align="right">Amount</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {drawerBatch.lines.map((l, li) => (
-                    <Tr key={li}>
-                      <Td>
-                        <div className="text-fg">{name(l.counterpartyId)}</div>
-                        {l.status === "failed" && l.error ? <div className="t-helper text-danger">{l.error}</div> : null}
-                      </Td>
-                      <Td>
-                        <div className="flex flex-wrap gap-1.5">
-                          {l.capProof ? (
-                            <Pill tone={!l.capProof.onChain ? "warning" : l.capProof.withinCap ? "shielded" : "danger"}>
-                              <ShieldCheck size={10} /> {!l.capProof.onChain ? "cap unverified" : l.capProof.withinCap ? "within cap" : "over cap"}
-                            </Pill>
-                          ) : null}
-                          {l.screenProof ? (
-                            <Pill tone={!l.screenProof.onChain ? "warning" : l.screenProof.innocent ? "shielded" : "danger"}>
-                              <ShieldCheck size={10} /> {!l.screenProof.onChain ? "screening unverified" : l.screenProof.innocent ? "not sanctioned" : "sanctioned"}
-                            </Pill>
-                          ) : null}
-                          {!l.capProof && !l.screenProof ? <span className="t-helper">—</span> : null}
-                        </div>
-                      </Td>
-                      <Td>
-                        <div className="flex items-center gap-2">
-                          {l.status === "paid" && !l.onChain ? <Pill tone="warning">not on-chain</Pill> : <StatusPill status={l.status} />}
-                          {l.txHash ? (
-                            <a href={explorerTxUrl(l.txHash)} target="_blank" rel="noreferrer" className="rounded text-[12px] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary/40">receipt</a>
-                          ) : null}
-                        </div>
-                      </Td>
-                      <Td align="right">{masked ? <span className="mask">••••</span> : <Amount minor={l.amount} tabular />}</Td>
-                    </Tr>
-                  ))}
-                </tbody>
-              </Table>
-            </div>
-
-            <TechnicalDetails batch={drawerBatch} refs={refs[drawerBatch.id]} />
-          </div>
-        ) : null}
-      </Modal>
-
-      <Modal
-        open={!!confirmRun}
-        onClose={() => setConfirmRun(null)}
-        title={
-          confirmRun
-            ? confirmRun.status === "processing"
-              ? "Retry failed payouts"
-              : settlesOnApprove(confirmRun, policies)
-                ? "Approve & run this payroll"
-                : "Approve this payroll run"
-            : ""
-        }
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setConfirmRun(null)}>Cancel</Button>
-            <Button
-              onClick={() => {
-                const b = confirmRun;
-                if (!b) return;
-                setConfirmRun(null);
-                void approveAndRun(b);
-              }}
-              data-testid="run-payroll-confirm"
-            >
-              <CheckCheck size={15} /> {confirmRun ? rowAction(confirmRun, policies) : "Approve & run"}
-            </Button>
-          </>
-        }
-      >
-        {confirmRun ? (
-          <div className="space-y-3">
-            <p className="text-sm text-muted">
-              {confirmRun.status === "processing" ? (
-                <>Retry the payouts that didn't settle on the <b>{monthYear(confirmRun.period)}</b> run. Successful lines are not paid twice.</>
-              ) : confirmRun.status === "approved" ? (
-                <>All approvals are already in for the <b>{monthYear(confirmRun.period)}</b> run. This settles the real on-chain payouts and <b>can't be undone</b>.</>
-              ) : settlesOnApprove(confirmRun, policies) ? (
-                <>This is your final approval for the <b>{monthYear(confirmRun.period)}</b> run. It proves funded, policy, computation and approval, then settles real on-chain payouts and <b>can't be undone</b>.</>
-              ) : (
-                <>This records your approval for the <b>{monthYear(confirmRun.period)}</b> run. It still needs {Math.max(1, requiredApprovers(confirmRun, policies) - approvedCount(confirmRun) - 1)} more approver{requiredApprovers(confirmRun, policies) - approvedCount(confirmRun) - 1 === 1 ? "" : "s"} before anything settles - <b>no payouts move yet</b>.</>
-              )}
-            </p>
-            <div className="space-y-2 rounded-xl bg-bg p-4 text-[14px]">
-              <div className="flex justify-between"><span className="text-muted">Recipients</span><span className="font-semibold">{confirmRun.lines.length}</span></div>
-              <div className="flex justify-between"><span className="text-muted">Total</span><span className="font-display font-semibold">{masked ? "••••" : fmtUsd(confirmRun.total.amount)}</span></div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-muted">Per-payout cap</span>
-                <div className="w-28">
-                  <Input aria-label="Per-payout cap (USDC)" inputMode="decimal" value={cap} onChange={(e) => setCap(e.target.value.replace(/[^0-9.]/g, ""))} data-testid="payout-cap" />
+        <div className="space-y-6">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+            <Card className="space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="t-card-title text-fg">Compose CSV</div>
+                  <p className="t-helper mt-1">Rows use recipient handle or address, then decimal amount.</p>
                 </div>
+                <Select
+                  aria-label="Payroll token"
+                  value={token}
+                  onChange={(e) => setToken(e.currentTarget.value as PayrollToken)}
+                  className="w-32"
+                  data-testid="payroll-token"
+                >
+                  <option value="usdc">USDC</option>
+                  <option value="eurc">EURC</option>
+                </Select>
               </div>
-            </div>
-            {unpayableCount(confirmRun) > 0 ? (
-              <div className="rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-[12.5px] text-warning" data-testid="unpayable-warning">
-                {unpayableCount(confirmRun)} recipient{unpayableCount(confirmRun) === 1 ? "" : "s"} {unpayableCount(confirmRun) === 1 ? "has" : "have"} no payout handle on file - those lines won't settle on-chain until they're invited.
+
+              <Textarea
+                value={csv}
+                onChange={(e) => setCsv(e.currentTarget.value)}
+                className="min-h-[180px] font-mono text-[13px]"
+                spellCheck={false}
+                data-testid="payroll-csv"
+                aria-label="Payroll CSV"
+              />
+
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_160px_auto]">
+                <Input
+                  placeholder="@handle or 0x..."
+                  value={rowRecipient}
+                  onChange={(e) => setRowRecipient(e.currentTarget.value)}
+                  aria-label="Recipient"
+                />
+                <Input
+                  placeholder="Amount"
+                  inputMode="decimal"
+                  value={rowAmount}
+                  onChange={(e) => setRowAmount(e.currentTarget.value.replace(/[^0-9.]/g, ""))}
+                  aria-label="Amount"
+                />
+                <Button variant="outline" onClick={addRow} disabled={!rowRecipient.trim() || !rowAmount.trim()} data-testid="add-payroll-row">
+                  <Plus size={15} /> Add row
+                </Button>
               </div>
-            ) : null}
-            <div className="flex items-center gap-1.5 text-[12.5px] text-muted">
-              <ShieldCheck size={13} className="text-primary" /> Each salary stays private on-chain. Proposer ≠ approver is enforced server-side.
-            </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+                <div className="inline-flex items-center gap-2 text-[13px] text-muted">
+                  <ShieldCheck size={14} className="text-primary" />
+                  Proving is sequential and server-side after the run starts.
+                </div>
+                <Button onClick={validateRun} loading={validating} disabled={!csv.trim()} data-testid="validate-payroll">
+                  <CheckCircle2 size={15} /> Validate
+                </Button>
+              </div>
+            </Card>
+
+            <Card className="space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="t-card-title text-fg">{runLabel}</div>
+                  <p className="t-helper mt-1">
+                    {runState ? `Updated ${new Date(runState.run.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Validate a CSV to create a run."}
+                  </p>
+                </div>
+                {hydrating ? <Skeleton className="h-7 w-20" /> : status ? <StatusPill status={status} /> : null}
+              </div>
+
+              {summary ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <Fact label="Rows" value={summary.total} />
+                  <Fact label="Valid" value={summary.valid} />
+                  <Fact label="Invalid" value={summary.invalid} danger={summary.invalid > 0} />
+                  <Fact label="Total" value={amountLabel(summary.totalAmount, summary.token, masked)} />
+                </div>
+              ) : (
+                <p className="text-sm text-muted">The backend returns a validation summary before anything is enqueued.</p>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={startRun} loading={starting} disabled={!canStart} data-testid="start-payroll">
+                  <Play size={15} /> Start
+                </Button>
+                <Button variant="outline" onClick={pauseRun} loading={pausing} disabled={!canPause} data-testid="pause-payroll">
+                  <Pause size={15} /> Pause
+                </Button>
+                <Button variant="outline" onClick={resumeRun} loading={resuming} disabled={!canResume} data-testid="resume-payroll">
+                  <RefreshCw size={15} /> Resume
+                </Button>
+              </div>
+            </Card>
           </div>
-        ) : null}
-      </Modal>
+
+          {underfunded ? <UnderfundedAlert body={underfunded} /> : null}
+          {error ? (
+            <div className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger" data-testid="payroll-error">
+              {error}
+            </div>
+          ) : null}
+
+          {progress ? <ProgressPanel progress={progress} status={status} /> : null}
+
+          {items.length > 0 ? (
+            <ItemsTable items={items} token={displayToken} masked={masked} />
+          ) : (
+            <EmptyState title="No payroll run composed" hint="Paste CSV rows, validate them, then start live progress." />
+          )}
+        </div>
+      )}
     </Screen>
   );
 }
 
-/** Small labelled value tile for the drawer summary. */
-function Fact({ label, value }: { label: string; value: ReactNode }) {
+function Fact({ label, value, danger = false }: { label: string; value: string | number; danger?: boolean }) {
   return (
-    <div className="rounded-lg border border-border bg-bg px-3 py-2">
+    <div className="border-l border-border pl-3">
       <div className="t-label text-muted">{label}</div>
-      <div className="mt-0.5 text-[14px] font-medium text-fg">{value}</div>
+      <div className={`mt-0.5 text-[14px] font-semibold ${danger ? "text-danger" : "text-fg"}`}>{value}</div>
     </div>
   );
 }
 
-/** Collapsible section - keeps the crypto/proof detail out of the calm default view. */
-function Disclosure({ title, children, testId }: { title: string; children: ReactNode; testId?: string }) {
-  const [open, setOpen] = useState(false);
+function UnderfundedAlert({ body }: { body: TreasuryUnderfundedError }) {
+  const shortfall = underfundedShortfall(body);
   return (
-    <div className="rounded-lg border border-border">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        data-testid={testId}
-        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-      >
-        <span className="t-card-title text-fg">{title}</span>
-        <ChevronDown size={16} className={`flex-none text-muted transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      <AnimatePresence initial={false}>
-        {open ? (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2, ease: EASE }} className="overflow-hidden">
-            <div className="border-t border-border px-4 py-3">{children}</div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/**
- * "Technical details" disclosure - the three proof claims that used to crowd the
- * run row, now folded away: Funding confirmed · Approval policy satisfied · Amounts
- * calculated from rate cards. Each shows its verified-on-chain state and, when a
- * proof was captured this session, an independent re-verify drill-down.
- */
-function TechnicalDetails({ batch, refs }: { batch: PayrollBatch; refs?: RunRefs }) {
-  const { fundedProof: f, approvalProof: a, computationProof: c } = batch;
-  const any = f || a || c;
-  return (
-    <Disclosure title="Technical details" testId="technical-details">
-      {any ? (
-        <div className="space-y-3">
-          {f ? (
-            <TechRow
-              label="Funding confirmed"
-              hint="Treasury proven to cover the run total (ORGBAL) - the total itself stays hidden."
-              verified={!!f.funded && !!f.onChain}
-              refData={refs?.funded}
-            />
-          ) : null}
-          {a ? (
-            <TechRow
-              label="Approval policy satisfied"
-              hint={`${a.approvers}-of-${a.memberCount} distinct approvers signed anonymously (ORGAUTH) - which ones stay private.`}
-              verified={!!a.approved && !!a.onChain}
-              refData={refs?.approval}
-            />
-          ) : null}
-          {c ? (
-            <TechRow
-              label="Amounts calculated from rate cards"
-              hint="Per-line amounts derived from each private rate card (PAYCOMP) - the rate card is never revealed."
-              verified={!!c.ok && !!c.onChain}
-              refData={refs?.computation}
-            />
-          ) : null}
+    <div className="flex flex-col gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning sm:flex-row sm:items-center sm:justify-between" data-testid="underfunded-alert">
+      <div className="flex min-w-0 items-start gap-2">
+        <AlertTriangle size={16} className="mt-0.5 flex-none" />
+        <div>
+          <div className="font-semibold">Treasury underfunded</div>
+          <div className="mt-0.5">
+            Required {body.requiredAmount} {TOKEN_LABEL[body.token]}, available {body.availableAmount} {TOKEN_LABEL[body.token]}
+            {shortfall ? `, short by ${shortfall} ${TOKEN_LABEL[body.token]}` : ""}.
+          </div>
         </div>
-      ) : (
-        <p className="t-secondary">Funding, approval-policy and computation proofs appear here once the run has been approved and settled on-chain.</p>
-      )}
-    </Disclosure>
-  );
-}
-
-function TechRow({ label, hint, verified, refData }: { label: string; hint: string; verified: boolean; refData?: OnChainRef }) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        <div className="flex items-center gap-1.5 text-[13.5px] font-medium text-fg">
-          <ShieldCheck size={13} className="flex-none text-primary" /> {label}
-        </div>
-        <div className="t-helper mt-0.5">{hint}</div>
       </div>
-      <div className="flex flex-none items-center gap-2">
-        <Pill tone={verified ? "shielded" : "warning"}>{verified ? "verified on-chain" : "not verified"}</Pill>
-        {refData ? <OnChainDetail refData={refData} label="View" /> : null}
-      </div>
+      <Link to="/treasury" className="inline-flex flex-none items-center justify-center rounded-lg border border-warning/40 px-3 py-2 text-sm font-medium outline-none transition hover:bg-warning/10 focus-visible:ring-2 focus-visible:ring-warning/40">
+        Fund treasury
+      </Link>
     </div>
   );
 }
 
-/**
- * Per-recipient progress inside the ceremony: each contractor "clicks done" as the
- * private proof for their salary seals. Driven from the run's b.lines register.
- * Timer-paced during the pass (like the ZK Proving strip), snapped to the real
- * per-line status once settlement confirms, and still under reduced-motion.
- */
-function CeremonyRoster({
-  batch,
-  name,
-  masked,
-  phase,
-  unpayable,
-}: {
-  batch: PayrollBatch;
-  name: (id?: string) => string;
-  masked: boolean;
-  phase: PaymentPhase;
-  unpayable: Set<string>;
-}) {
-  const reduce = useReducedMotion() ?? false;
-  const lines = batch.lines;
-  const settled = phase === "confirmed";
-  const failedPhase = phase === "failed";
-  const inFlight = phase === "building" || phase === "proving" || phase === "submitting";
-  const proven = useProvenCount(inFlight, lines.length, reduce, settled, failedPhase);
-  const doneCount = settled ? lines.filter((l) => l.status === "paid").length : proven;
-
+function ProgressPanel({ progress, status }: { progress: PayrollProgressCounts; status: PayrollRunStatus | null }) {
+  const total = Math.max(1, progress.total);
+  const confirmedPct = Math.min(100, Math.round((progress.confirmed / total) * 100));
+  const terminal = terminalStatus(status ?? undefined);
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between text-[12px] font-semibold uppercase tracking-[0.06em] text-white/50">
-        <span>Recipients</span>
-        <span className="text-white/70">{settled ? `${doneCount}/${lines.length} paid` : `${proven}/${lines.length} sealed`}</span>
+    <Card className="space-y-4" data-testid="payroll-progress">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="t-card-title text-fg">Live progress</div>
+          <p className="t-helper mt-1">Pending to proving to submitted to confirmed.</p>
+        </div>
+        {status ? <StatusPill status={status} /> : null}
       </div>
-      <p className="mb-2.5 text-[12px] normal-case text-white/48">
-        {settled ? "Salaries settled privately - amounts stay hidden on-chain." : failedPhase ? "The run stopped before every line settled." : "Proving each salary private, then funded · policy · computation on-chain."}
-      </p>
-      <div className="max-h-[196px] space-y-1 overflow-y-auto pr-1">
-        {lines.map((l, i) => (
-          <RosterRow key={i} line={l} label={name(l.counterpartyId)} masked={masked} skip={unpayable.has(l.counterpartyId)} proven={i < proven} settled={settled} failedPhase={failedPhase} animate={!reduce} />
+      <div className="h-2 overflow-hidden rounded-full bg-border">
+        <div className={`h-full rounded-full ${terminal && progress.failed > 0 ? "bg-danger" : "bg-success"}`} style={{ width: `${confirmedPct}%` }} />
+      </div>
+      <div className="grid gap-2 sm:grid-cols-4">
+        <ProgressCount label="Pending" value={progress.pending} total={progress.total} />
+        <ProgressCount label="Proving" value={progress.proving} total={progress.total} />
+        <ProgressCount label="Submitted" value={progress.submitted} total={progress.total} />
+        <ProgressCount label="Confirmed" value={progress.confirmed} total={progress.total} testId="progress-confirmed" />
+      </div>
+      <div className="flex flex-wrap gap-4 text-[13px] text-muted">
+        <span>Failed: <b className={progress.failed ? "text-danger" : "text-fg"}>{progress.failed}</b></span>
+        <span>Proved: <b className="text-fg">{progress.proved}</b></span>
+      </div>
+    </Card>
+  );
+}
+
+function ProgressCount({ label, value, total, testId }: { label: string; value: number; total: number; testId?: string }) {
+  return (
+    <div className="border-l border-border pl-3" data-testid={testId}>
+      <div className="t-label text-muted">{label}</div>
+      <div className="mt-1 text-[18px] font-semibold text-fg">{value}<span className="text-sm font-medium text-muted">/{total}</span></div>
+    </div>
+  );
+}
+
+function ItemsTable({ items, token, masked }: { items: PayrollRunItem[]; token: PayrollToken; masked: boolean }) {
+  return (
+    <Table>
+      <thead>
+        <tr>
+          <Th>Row</Th>
+          <Th>Recipient</Th>
+          <Th>Resolved</Th>
+          <Th>Status</Th>
+          <Th align="right">Amount</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((item) => (
+          <Tr key={`${item.rowIndex}-${item.recipientInput}`} data-testid={`payroll-row-${item.rowIndex}`}>
+            <Td className="tnum text-muted">{item.rowIndex}</Td>
+            <Td>
+              <div className="font-medium text-fg">{item.recipientInput}</div>
+              {item.error ? <div className="t-helper mt-0.5 text-danger">{item.error}</div> : null}
+            </Td>
+            <Td>{item.resolvedAddress ? <span className="font-mono text-xs">{formatAddress(item.resolvedAddress, 6, 4)}</span> : <span className="text-muted">-</span>}</Td>
+            <Td><StatusPill status={item.status} /></Td>
+            <Td align="right" className="tnum">{amountLabel(item.amount, token, masked)}</Td>
+          </Tr>
         ))}
-      </div>
-    </div>
+      </tbody>
+    </Table>
   );
-}
-
-function RosterRow({
-  line,
-  label,
-  masked,
-  skip,
-  proven,
-  settled,
-  failedPhase,
-  animate,
-}: {
-  line: PayrollLine;
-  label: string;
-  masked: boolean;
-  skip: boolean;
-  proven: boolean;
-  settled: boolean;
-  failedPhase: boolean;
-  animate: boolean;
-}) {
-  // Resolve one of five per-row states, honestly reflecting reality once known.
-  const mode: "paid" | "failed" | "skip" | "proven" | "proving" =
-    settled ? (line.status === "paid" ? "paid" : line.status === "failed" ? "failed" : "skip")
-    : skip ? "skip"
-    : proven ? "proven"
-    : "proving";
-  const done = mode === "paid" || mode === "proven";
-  return (
-    <div className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-[13px]">
-      <span className="flex h-5 w-5 flex-none items-center justify-center">
-        {done ? (
-          <motion.span
-            initial={animate ? { scale: 0.4, opacity: 0 } : false}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={spring}
-            className="flex h-5 w-5 items-center justify-center rounded-full bg-success text-[#10261b]"
-          >
-            <Check size={12} />
-          </motion.span>
-        ) : mode === "failed" ? (
-          <span className="h-2.5 w-2.5 rounded-full bg-danger" />
-        ) : mode === "skip" ? (
-          <span className="h-2.5 w-2.5 rounded-full border border-warning/70 bg-warning/30" />
-        ) : (
-          <motion.span
-            animate={animate ? { scale: [1, 1.4, 1], opacity: [0.5, 1, 0.5] } : { opacity: 0.7 }}
-            transition={{ duration: 1.1, repeat: animate ? Infinity : 0, ease: "easeInOut" }}
-            className="h-2 w-2 rounded-full bg-primary"
-          />
-        )}
-      </span>
-      <span className={`min-w-0 flex-1 truncate ${done ? "text-white/85" : "text-white/60"}`}>{label}</span>
-      <span className={`flex-none text-[11.5px] ${mode === "failed" ? "text-danger" : mode === "skip" ? "text-warning" : "text-white/45"}`}>
-        {mode === "paid" ? "paid" : mode === "failed" ? "failed" : mode === "skip" ? "no handle" : mode === "proven" ? "sealed" : "proving"}
-      </span>
-      <span className="font-display flex-none text-white/80">{masked ? "••••" : fmtUsd(line.amount)}</span>
-    </div>
-  );
-}
-
-/**
- * Walk 0..total while the pass is in flight so recipients seal one-by-one; snap to
- * total on a confirmed settle, freeze in place on failure, all-at-once under
- * reduced motion. Timer-paced (we have no real per-line events), matching the
- * codebase's honest Proving strip.
- */
-function useProvenCount(active: boolean, total: number, reduce: boolean, complete: boolean, frozen: boolean): number {
-  const [n, setN] = useState(0);
-  useEffect(() => {
-    if (frozen) return; // failure: keep whatever sealed so far
-    if (complete || reduce) {
-      setN(total);
-      return;
-    }
-    if (!active) {
-      setN(0);
-      return;
-    }
-    setN(0);
-    const step = Math.max(200, Math.min(420, 1500 / Math.max(total, 1)));
-    const id = setInterval(() => setN((x) => (x < total ? x + 1 : x)), step);
-    return () => clearInterval(id);
-  }, [active, total, reduce, complete, frozen]);
-  return Math.min(n, total);
 }

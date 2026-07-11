@@ -17,7 +17,9 @@ import type {
   Member,
   OnboardingStatus,
   PaymentOrder,
-  PayrollBatch,
+  PayrollProgressCounts,
+  PayrollRun,
+  PayrollRunItem,
   ProvisionTreasuryResponse,
   TreasuryDeposit,
   TreasuryView,
@@ -41,7 +43,9 @@ export interface DemoDb {
   members: Member[];
   accounts: Account[];
   counterparties: Counterparty[];
-  payrolls: PayrollBatch[];
+  payrollRuns: PayrollRun[];
+  payrollItems: Record<string, PayrollRunItem[]>;
+  payrollProgress: Record<string, PayrollProgressCounts>;
   payments: PaymentOrder[];
   invoices: Invoice[];
   grants: ViewingGrant[];
@@ -161,31 +165,6 @@ export function createDemoDb(): DemoDb {
   const rateOf = (id: string) => counterparties.find((c) => c.id === id)?.payRate?.amount ?? "0";
   const runTotal = payableIds.reduce((s, id) => s + BigInt(rateOf(id)), 0n).toString();
   const fakeHash = (seed: string) => `0x${seed.repeat(8).slice(0, 64)}`;
-
-  const junePaid: PayrollBatch = {
-    id: "pr_jun",
-    orgId: ORG_ID,
-    period: "2026-06",
-    source: "manual",
-    status: "completed",
-    total: { amount: runTotal, assetCode: "USDC" },
-    createdAt: ISO("2026-06-01"),
-    lines: payableIds.map((id) => ({ counterpartyId: id, amount: rateOf(id), rate: rateOf(id), status: "paid" as const, onChain: true, txHash: fakeHash(id.slice(3)), capProof: { withinCap: true, onChain: true }, screenProof: { innocent: true, onChain: true } })),
-    fundedProof: { funded: true, onChain: true, provenAt: ISO("2026-06-01") },
-    approvalProof: { approved: true, onChain: true, approvers: 2, threshold: 2, memberCount: members.length, provenAt: ISO("2026-06-01") },
-    computationProof: { ok: true, onChain: true, runTotal, provenAt: ISO("2026-06-01") },
-  };
-
-  const julyPending: PayrollBatch = {
-    id: "pr_jul",
-    orgId: ORG_ID,
-    period: "2026-07",
-    source: "manual",
-    status: "needs_approval",
-    total: { amount: runTotal, assetCode: "USDC" },
-    createdAt: ISO("2026-07-01"),
-    lines: payableIds.map((id) => ({ counterpartyId: id, amount: rateOf(id), rate: rateOf(id), status: "pending" as const })),
-  };
 
   const privacy = (amountHidden: boolean) => ({ amountHidden, counterpartyHidden: true, visibleTo: ["mem_owner"] });
 
@@ -402,7 +381,9 @@ export function createDemoDb(): DemoDb {
     members,
     accounts,
     counterparties,
-    payrolls: [junePaid, julyPending],
+    payrollRuns: [],
+    payrollItems: {},
+    payrollProgress: {},
     payments,
     invoices,
     grants,
@@ -446,7 +427,7 @@ export function dashboardSummary(db: DemoDb): DashboardSummary {
     totalPosition: { amount: db.privateTotal, assetCode: "USDC" },
     pendingApprovals: db.payments.filter((p) => p.status === "needs_approval").length,
     openInvoices: db.invoices.filter((i) => i.status !== "paid" && i.status !== "cancelled").length,
-    scheduledPayrolls: db.payrolls.filter((p) => p.status === "needs_approval" || p.status === "approved").length,
+    scheduledPayrolls: db.payrollRuns.filter((p) => p.status === "ready" || p.status === "running" || p.status === "paused").length,
     recentActivity: db.dashboardActivity,
     live: true,
   };

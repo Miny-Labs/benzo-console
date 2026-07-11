@@ -15,8 +15,17 @@ import type {
   OnboardingStatus,
   OnboardingStatusResponse,
   PaymentOrder,
-  PayrollBatch,
+  CreatePayrollRunRequest,
+  CreatePayrollRunResponse,
+  PayrollProgressCounts,
+  PayrollRun,
+  PayrollRunItem,
+  PayrollRunResponse,
+  PayrollToken,
+  PausePayrollRunResponse,
   ProvisionTreasuryResponse,
+  ResumePayrollRunResponse,
+  StartPayrollRunResponse,
   StartOnboardingResponse,
   TreasuryDepositsResponse,
   ViewingGrant,
@@ -25,8 +34,6 @@ import type {
   ApprovalProgressView,
   OnChainRef,
   OrgInvite,
-  PayrollPolicyProofResponse,
-  PayrollProofResponse,
   PrivateAuditAnchorResponse,
   PrivateAuditPacketResponse,
   RecoveryStatus,
@@ -75,11 +82,138 @@ const READ = 140;
 const PROVE = 640;
 const SETTLE = 720;
 const ONBOARDING_STEP = 520;
+const PAYROLL_STEP = 420;
+
+const TOKEN_ID: Record<PayrollToken, string> = {
+  usdc: "avalanche-fuji:usdc",
+  eurc: "avalanche-fuji:eurc",
+};
+
+const payrollTimers = new Map<string, Array<ReturnType<typeof setTimeout>>>();
 
 function activeOrg() {
   const org = db.session.activeOrg;
   if (!org) throw new Error("No demo org");
   return org;
+}
+
+function parseTokenAmount(value: string): bigint {
+  const clean = value.trim().replace(/,/g, "");
+  const [whole = "0", frac = ""] = clean.split(".");
+  return BigInt(whole || "0") * 1_000_000n + BigInt(frac.padEnd(6, "0").slice(0, 6) || "0");
+}
+
+function formatTokenAmount(minor: bigint): string {
+  const whole = minor / 1_000_000n;
+  const frac = (minor % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return `${whole}${frac ? `.${frac}` : ""}`;
+}
+
+function normalizePayrollAmount(raw: string): string | null {
+  const value = raw.trim().replace(/,/g, "");
+  if (!/^(0|[1-9]\d*)(\.\d{1,6})?$/.test(value)) return null;
+  if (parseTokenAmount(value) <= 0n) return null;
+  return formatTokenAmount(parseTokenAmount(value));
+}
+
+function resolvePayrollRecipient(input: string): string | null {
+  const recipient = input.trim();
+  if (/^0x[a-fA-F0-9]{40}$/.test(recipient)) return recipient;
+  const match = db.counterparties.find((c) => c.paymentAddress?.shielded?.toLowerCase() === recipient.toLowerCase());
+  return match?.paymentAddress?.spendPub ?? null;
+}
+
+function payrollProgress(items: PayrollRunItem[]): PayrollProgressCounts {
+  const confirmed = items.filter((item) => item.status === "confirmed").length;
+  return {
+    total: items.length,
+    pending: items.filter((item) => item.status === "pending").length,
+    proving: items.filter((item) => item.status === "proving").length,
+    submitted: items.filter((item) => item.status === "submitted").length,
+    confirmed,
+    failed: items.filter((item) => item.status === "failed").length,
+    proved: confirmed,
+  };
+}
+
+function clearPayrollTimers(runId: string) {
+  for (const timer of payrollTimers.get(runId) ?? []) clearTimeout(timer);
+  payrollTimers.delete(runId);
+}
+
+function payrollSnapshot(runId: string): PayrollRunResponse {
+  const run = byId(db.payrollRuns, runId);
+  if (!run) throw new Error("not found");
+  return {
+    run: clone(run),
+    progress: clone(db.payrollProgress[runId] ?? payrollProgress(db.payrollItems[runId] ?? [])),
+    items: clone(db.payrollItems[runId] ?? []),
+  };
+}
+
+function setPayrollItemStatus(runId: string, rowIndex: number, status: PayrollRunItem["status"]) {
+  const run = byId(db.payrollRuns, runId);
+  if (!run || run.status !== "running") return;
+  const item = (db.payrollItems[runId] ?? []).find((i) => i.rowIndex === rowIndex);
+  if (!item || item.status === "failed" || item.status === "confirmed") return;
+  item.status = status;
+  run.updatedAt = now();
+  db.payrollProgress[runId] = payrollProgress(db.payrollItems[runId] ?? []);
+  if (db.payrollProgress[runId].confirmed + db.payrollProgress[runId].failed >= db.payrollProgress[runId].total) {
+    run.status = db.payrollProgress[runId].failed > 0 ? "failed" : "complete";
+    run.updatedAt = now();
+    if (run.status === "complete") db.privateTotal = (BigInt(db.privateTotal) - parseTokenAmount(run.totalAmount)).toString();
+    clearPayrollTimers(runId);
+  }
+}
+
+function schedulePayrollProgress(runId: string) {
+  clearPayrollTimers(runId);
+  const run = byId(db.payrollRuns, runId);
+  if (!run || run.status !== "running") return;
+  const timers: Array<ReturnType<typeof setTimeout>> = [];
+  const remaining = (db.payrollItems[runId] ?? []).filter((item) => item.status !== "confirmed" && item.status !== "failed");
+  remaining.forEach((item, index) => {
+    const base = index * PAYROLL_STEP * 3;
+    timers.push(setTimeout(() => setPayrollItemStatus(runId, item.rowIndex, "proving"), base + PAYROLL_STEP));
+    timers.push(setTimeout(() => setPayrollItemStatus(runId, item.rowIndex, "submitted"), base + PAYROLL_STEP * 2));
+    timers.push(setTimeout(() => setPayrollItemStatus(runId, item.rowIndex, "confirmed"), base + PAYROLL_STEP * 3));
+  });
+  payrollTimers.set(runId, timers);
+}
+
+function parsePayrollCsv(csv: string, token: PayrollToken): Pick<CreatePayrollRunResponse, "summary" | "items" | "status" | "token" | "tokenId"> {
+  const rows = csv.split(/\r?\n/)
+    .map((line, index) => ({ line: line.trim(), rowIndex: index + 1 }))
+    .filter((row) => row.line.length > 0);
+  const dataRows = rows[0] && /^recipient\s*,\s*amount/i.test(rows[0].line) ? rows.slice(1) : rows;
+  const items = dataRows.map(({ line, rowIndex }) => {
+    const cells = line.split(",").map((cell) => cell.trim());
+    const [recipientInput = "", rawAmount = ""] = cells;
+    const amount = normalizePayrollAmount(rawAmount);
+    const resolvedAddress = recipientInput ? resolvePayrollRecipient(recipientInput) : null;
+    let error: string | null = null;
+    if (cells.length !== 2 || !recipientInput || !rawAmount) error = "Expected recipient,amount.";
+    else if (!amount) error = "Amount must be a positive decimal with up to 6 places.";
+    else if (!resolvedAddress) error = "Recipient did not resolve to a Benzo handle or address.";
+    return {
+      rowIndex,
+      recipientInput,
+      resolvedAddress,
+      amount: amount ?? rawAmount,
+      status: error ? "failed" as const : "pending" as const,
+      error,
+    };
+  });
+  const totalAmount = formatTokenAmount(items.reduce((sum, item) => item.status === "failed" ? sum : sum + parseTokenAmount(item.amount), 0n));
+  const invalid = items.filter((item) => item.status === "failed").length;
+  return {
+    status: invalid > 0 || items.length === 0 ? "failed" : "ready",
+    token,
+    tokenId: TOKEN_ID[token],
+    summary: { total: items.length, valid: items.length - invalid, invalid, totalAmount, token, tokenId: TOKEN_ID[token] },
+    items,
+  };
 }
 
 const ONBOARDING_STATUSES = ["pending_kyc", "kyc_approved", "allowlisted", "gas_dripped", "awaiting_registration", "complete"] as const;
@@ -130,7 +264,6 @@ export const demoApi = {
   members: async () => (await delay(READ), clone(db.members)),
   counterparties: async () => (await delay(READ), clone(db.counterparties)),
   payments: async () => (await delay(READ), clone(db.payments)),
-  payrolls: async () => (await delay(READ), clone(db.payrolls)),
   invoices: async () => (await delay(READ), clone(db.invoices)),
   grants: async () => (await delay(READ), clone(db.grants)),
   policies: async () => (await delay(READ), clone(db.policies)),
@@ -170,7 +303,7 @@ export const demoApi = {
   proveKyb: async () => (await delay(PROVE), { ok: true, onChain: true, jurisdiction: "US", tier: "verified", ref: fakeRef("KYB credential", "KYB") }),
   periodTotalAttestation: async (period: string) => {
     await delay(PROVE);
-    const total = db.payrolls.filter((p) => p.status === "completed").reduce((s, p) => s + BigInt(p.total.amount), 0n).toString();
+    const total = db.payrollRuns.filter((p) => p.status === "complete").reduce((s, p) => s + parseTokenAmount(p.totalAmount), 0n).toString();
     return { live: true, org: activeOrg().name, period, total, onChain: true, vkId: "ORGSUM", verifier: fakeVerifier(), network: NETWORK, root: fakeRoot(), proof: {}, publicInputs: [total], issuedAt: now() };
   },
 
@@ -263,62 +396,98 @@ export const demoApi = {
     return { ...clone(p), progress };
   },
 
-  // ---- payroll (the flagship cinematic) -----------------------------------
-  createPayroll: async (body: { period: string; source: PayrollBatch["source"]; lines: Array<{ counterpartyId: string }> }) => {
+  // ---- payroll ------------------------------------------------------------
+  createPayrollRun: async (_orgId: string, body: CreatePayrollRunRequest): Promise<CreatePayrollRunResponse> => {
     await delay(SETTLE);
-    const lines = body.lines.map((l) => {
-      const c = byId(db.counterparties, l.counterpartyId);
-      return { counterpartyId: l.counterpartyId, amount: c?.payRate?.amount ?? "0", rate: c?.payRate?.amount ?? "0", status: "pending" as const };
-    });
-    const total = lines.reduce((s, l) => s + BigInt(l.amount), 0n).toString();
-    const batch: PayrollBatch = { id: `pr_${randHex(6)}`, orgId: activeOrg().id, period: body.period, source: body.source, status: "needs_approval", lines, total: { amount: total, assetCode: "USDC" }, createdAt: now() };
-    db.payrolls.unshift(batch);
-    return clone(batch);
+    const parsed = parsePayrollCsv(body.csv, body.token ?? "usdc");
+    const timestamp = now();
+    const runId = `pr_${randHex(6)}`;
+    const run: PayrollRun = {
+      id: runId,
+      orgId: activeOrg().id,
+      status: parsed.status,
+      itemCount: parsed.summary.total,
+      totalAmount: parsed.summary.totalAmount,
+      token: parsed.token,
+      tokenId: parsed.tokenId,
+      createdBy: db.session.user.id,
+      error: parsed.status === "failed" ? "CSV validation failed." : null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.payrollRuns.unshift(run);
+    db.payrollItems[runId] = parsed.items;
+    db.payrollProgress[runId] = payrollProgress(parsed.items);
+    return { runId, ...clone(parsed) };
   },
-  proveFunded: async (id: string): Promise<PayrollProofResponse> => {
-    await delay(PROVE);
-    const b = byId(db.payrolls, id);
-    const runTotal = b?.total.amount ?? "0";
-    return { funded: true, onChain: true, runTotal, cap: usd(5000), provenAt: now(), ref: fakeRef("Payroll funded", "ORGBAL", [{ k: "Covers run total", v: "yes" }]) };
-  },
-  provePolicy: async (id: string, cap: string): Promise<PayrollPolicyProofResponse> => {
-    await delay(PROVE);
-    const b = byId(db.payrolls, id);
-    const lines = (b?.lines ?? []).map((l) => ({ counterpartyId: l.counterpartyId, capProof: { withinCap: true, onChain: true }, screenProof: { innocent: true, onChain: true } }));
-    return { ok: true, onChain: true, lines, ref: fakeRef("Spending policy", "SPENDCAP", [{ k: "Per-payout cap", v: cap }]) };
-  },
-  proveComputation: async (id: string): Promise<PayrollProofResponse> => {
-    await delay(PROVE);
-    const b = byId(db.payrolls, id);
-    return { ok: true, onChain: true, runTotal: b?.total.amount ?? "0", provenAt: now(), ref: fakeRef("Payroll computation", "PAYCOMP") };
-  },
-  proveApproval: async (id: string): Promise<PayrollProofResponse> => {
-    await delay(PROVE);
-    return { approved: true, onChain: true, approvers: 2, threshold: 2, memberCount: db.members.length, provenAt: now(), ref: fakeRef("Anonymous approval", "ORGAUTH", [{ k: "Approvers", v: "2-of-4" }]) };
-  },
-  // One click settles the run: mutate every line to paid + on-chain, attach the
-  // three proofs, and return with a satisfied release gate so the ceremony settles.
-  approvePayroll: async (id: string) => {
-    await delay(SETTLE);
-    const b = byId(db.payrolls, id);
-    if (!b) throw new Error("not found");
-    b.status = "completed";
-    b.lines = b.lines.map((l) => {
-      const payable = !!byId(db.counterparties, l.counterpartyId)?.paymentAddress?.shielded;
-      return payable
-        ? { ...l, status: "paid" as const, onChain: true, txHash: fakeTx(), capProof: { withinCap: true, onChain: true }, screenProof: { innocent: true, onChain: true } }
-        : { ...l, status: "paid" as const, onChain: true, txHash: fakeTx() };
-    });
-    b.fundedProof = { funded: true, onChain: true, provenAt: now() };
-    b.approvalProof = { approved: true, onChain: true, approvers: 2, threshold: 2, memberCount: db.members.length, provenAt: now() };
-    b.computationProof = { ok: true, onChain: true, runTotal: b.total.amount, provenAt: now() };
-    // No `progress` field => Payroll treats this click as the final step and settles.
-    return clone(b);
-  },
-  payslips: async (id: string) => {
+  getPayrollRun: async (runId: string): Promise<PayrollRunResponse> => {
     await delay(READ);
-    const b = byId(db.payrolls, id);
-    return (b?.lines ?? []).map((l) => ({ period: b?.period ?? "", contractor: byId(db.counterparties, l.counterpartyId)?.name ?? "Unknown", gross: l.amount, status: l.status, txHash: l.txHash }));
+    return payrollSnapshot(runId);
+  },
+  subscribePayrollProgress: (runId: string, onProgress: (event: { runId: string; status: PayrollRun["status"]; progress: PayrollProgressCounts }) => void, onError?: (error: Error) => void) => {
+    let closed = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const close = () => {
+      closed = true;
+      if (timer) clearTimeout(timer);
+    };
+    const tick = () => {
+      if (closed) return;
+      void demoApi.getPayrollRun(runId).then(
+        ({ run, progress }) => {
+          if (closed) return;
+          onProgress({ runId: run.id, status: run.status, progress });
+          if (run.status === "complete" || run.status === "failed") {
+            close();
+            return;
+          }
+          timer = setTimeout(tick, 450);
+        },
+        (error) => {
+          if (closed) return;
+          onError?.(error instanceof Error ? error : new Error("Payroll progress polling failed."));
+          timer = setTimeout(tick, 450);
+        },
+      );
+    };
+    tick();
+    return { close };
+  },
+  startPayrollRun: async (runId: string): Promise<StartPayrollRunResponse> => {
+    await delay(SETTLE);
+    const run = byId(db.payrollRuns, runId);
+    if (!run) throw new Error("not found");
+    if (run.status !== "ready" && run.status !== "paused") throw new Error("Run is not ready to start.");
+    run.status = "running";
+    run.updatedAt = now();
+    for (const item of db.payrollItems[runId] ?? []) {
+      if (item.status !== "failed" && item.status !== "confirmed") item.status = "pending";
+    }
+    db.payrollProgress[runId] = payrollProgress(db.payrollItems[runId] ?? []);
+    schedulePayrollProgress(runId);
+    const progress = clone(db.payrollProgress[runId]);
+    return { runId, status: "running", enqueued: true, totalPending: progress.pending, progress };
+  },
+  pausePayrollRun: async (runId: string): Promise<PausePayrollRunResponse> => {
+    await delay(READ);
+    const run = byId(db.payrollRuns, runId);
+    if (!run) throw new Error("not found");
+    clearPayrollTimers(runId);
+    run.status = "paused";
+    run.updatedAt = now();
+    db.payrollProgress[runId] = payrollProgress(db.payrollItems[runId] ?? []);
+    return { runId, status: "paused", progress: clone(db.payrollProgress[runId]) };
+  },
+  resumePayrollRun: async (runId: string): Promise<ResumePayrollRunResponse> => {
+    await delay(SETTLE);
+    const run = byId(db.payrollRuns, runId);
+    if (!run) throw new Error("not found");
+    if (run.status !== "paused") throw new Error("Run is not paused.");
+    run.status = "running";
+    run.updatedAt = now();
+    schedulePayrollProgress(runId);
+    const progress = clone(db.payrollProgress[runId] ?? payrollProgress(db.payrollItems[runId] ?? []));
+    return { runId, status: "running", enqueued: true, totalPending: progress.pending, progress };
   },
 
   // ---- invoices -----------------------------------------------------------

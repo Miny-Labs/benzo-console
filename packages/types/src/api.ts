@@ -13,7 +13,7 @@ import type { Invoice, LineItem } from "./invoices.js";
 import type { LedgerEntry } from "./ledger.js";
 import type { Member, OrgRole, OrgSummary, Role } from "./org.js";
 import type { PaymentOrder, PaymentType } from "./payments.js";
-import type { PayrollBatch, PayrollSource } from "./payroll.js";
+import type { CreatePayrollRunResponse, PayrollRunResponse } from "./payroll.js";
 
 // ---- auth / session -------------------------------------------------------
 
@@ -217,18 +217,6 @@ export interface CreateInvoiceRequest {
   handle?: string;
 }
 
-export interface CreatePayrollRequest {
-  period: string;
-  source: PayrollSource;
-  /**
-   * The run is assembled from a list of contractors; the BFF COMPUTES each gross
-   * from the contractor's stored rate card (`amount` is optional and, when
-   * present, is only an override the server still validates — never blindly summed).
-   */
-  lines: Array<{ counterpartyId: string; amount?: string }>;
-  scheduledAt?: string;
-}
-
 export interface CreateCounterpartyRequest {
   name: string;
   type: Counterparty["type"];
@@ -320,9 +308,11 @@ export const ENDPOINTS = {
   invoices: { method: "GET", path: "/api/invoices" },
   createInvoice: { method: "POST", path: "/api/invoices" },
 
-  payrolls: { method: "GET", path: "/api/payrolls" },
-  createPayroll: { method: "POST", path: "/api/payrolls" },
-  approvePayroll: { method: "POST", path: "/api/payrolls/:id/approve" },
+  createPayrollRun: { method: "POST", path: "/api/orgs/:id/payroll" },
+  payrollRun: { method: "GET", path: "/api/payroll/:runId" },
+  startPayrollRun: { method: "POST", path: "/api/payroll/:runId/start" },
+  pausePayrollRun: { method: "POST", path: "/api/payroll/:runId/pause" },
+  resumePayrollRun: { method: "POST", path: "/api/payroll/:runId/resume" },
 
   policies: { method: "GET", path: "/api/policies" },
   createPolicy: { method: "POST", path: "/api/policies" },
@@ -347,7 +337,8 @@ export type AccountsResponse = Account[];
 export type CounterpartiesResponse = Counterparty[];
 export type PaymentsResponse = PaymentOrder[];
 export type InvoicesResponse = Invoice[];
-export type PayrollsResponse = PayrollBatch[];
+export type CreatePayrollRunApiResponse = CreatePayrollRunResponse;
+export type PayrollRunApiResponse = PayrollRunResponse;
 export type PoliciesResponse = ApprovalPolicy[];
 export type GrantsResponse = ViewingGrant[];
 export type ZonesResponse = ComplianceZone[];

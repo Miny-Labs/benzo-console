@@ -8,7 +8,6 @@ const apiMock = vi.hoisted(() => ({
   dashboard: vi.fn(),
   orgTreasury: vi.fn(),
   payments: vi.fn(),
-  payrolls: vi.fn(),
   invoices: vi.fn(),
   grants: vi.fn(),
   counterparties: vi.fn(),
@@ -52,7 +51,6 @@ describe("ConsoleProvider treasury read model", () => {
       balances: [],
     });
     apiMock.payments.mockResolvedValue([]);
-    apiMock.payrolls.mockResolvedValue([]);
     apiMock.invoices.mockResolvedValue([]);
     apiMock.grants.mockResolvedValue([]);
     apiMock.counterparties.mockResolvedValue([]);
