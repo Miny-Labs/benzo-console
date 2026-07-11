@@ -7,19 +7,22 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+import { DEMO_MODE } from "../demo/flag";
 
+// Jump-to targets mirror the sidebar: in real mode only the backend-backed
+// screens are reachable, so the palette hides the demo-only destinations too.
 const DESTINATIONS = [
-  { label: "Dashboard", to: "/" },
-  { label: "Contractors", to: "/contractors" },
-  { label: "Payroll", to: "/payroll" },
-  { label: "Invoices to pay", to: "/invoices" },
-  { label: "Send & vendor pay", to: "/pay" },
-  { label: "Approvals", to: "/approvals" },
-  { label: "Treasury", to: "/treasury" },
-  { label: "Auditor grants", to: "/grants" },
-  { label: "Audit log", to: "/audit" },
-  { label: "Settings & team", to: "/settings" },
-];
+  { label: "Dashboard", to: "/", real: false },
+  { label: "Contractors", to: "/contractors", real: false },
+  { label: "Payroll", to: "/payroll", real: true },
+  { label: "Invoices to pay", to: "/invoices", real: false },
+  { label: "Send & vendor pay", to: "/pay", real: false },
+  { label: "Approvals", to: "/approvals", real: false },
+  { label: "Treasury", to: "/treasury", real: true },
+  { label: "Auditor grants", to: "/grants", real: false },
+  { label: "Audit log", to: "/audit", real: false },
+  { label: "Settings & team", to: "/settings", real: false },
+].filter((d) => DEMO_MODE || d.real);
 
 export function CommandBar() {
   const nav = useNavigate();
