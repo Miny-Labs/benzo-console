@@ -1,5 +1,5 @@
 /**
- * @benzo/links — one typed link format shared by every surface.
+ * @benzo/links, one typed link format shared by every surface.
  *
  * Modeled on Daimo's daimoLink.ts: links are defined ONCE as a discriminated
  * union, encoded/parsed by this single package, and consumed by web / mobile /
@@ -8,7 +8,7 @@
  *
  * Every link carries an `app` scope ("consumer" | "business"). This is the
  * single source of truth for the two-app boundary: a consumer wallet must never
- * act on a business invite and vice-versa. The scope is enforced twice —
+ * act on a business invite and vice-versa. The scope is enforced twice -
  * `assertAppScope()` here (UI/runtime) and, for claim links, by folding the
  * scope into the key-derivation domain separator in `@benzo/core` so a consumer
  * claim secret cannot even reconstruct a business account (and vice-versa).
@@ -22,16 +22,16 @@ export type BenzoLink = ClaimLink | RequestLink | HandleLink | OrgInviteLink;
 /** A tappable link that funds a fresh account from an embedded claim secret. */
 export interface ClaimLink {
   type: "claim";
-  /** claim secret — carried in the URL fragment, never sent to a server */
+  /** claim secret, carried in the URL fragment, never sent to a server */
   secret: string;
   amount?: string;
   asset?: string;
   /** product scope (default "consumer" when absent) */
   app?: AppScope;
-  /** expiry (unix seconds) — after this the sender may self-claim a refund */
+  /** expiry (unix seconds), after this the sender may self-claim a refund */
   expiresAt?: string;
   /**
-   * opaque, sealed sender context ("Maya sent you $25 — thanks!"). Encrypted
+   * opaque, sealed sender context ("Maya sent you $25, thanks!"). Encrypted
    * to the recipient with a key derived from the claim secret (see
    * sealLinkContext/openLinkContext); the server only ever sees ciphertext.
    */
@@ -67,7 +67,7 @@ export interface HandleLink {
 }
 
 /**
- * A business invite — onboards an employee/contractor/customer into the correct
+ * A business invite, onboards an employee/contractor/customer into the correct
  * app. No money is attached (unlike a ClaimLink); a single-use HMAC token in the
  * fragment authorizes the seat/payee creation. Always `app: "business"`.
  */
@@ -81,7 +81,7 @@ export interface OrgInviteLink {
   counterpartyId?: string;
   /** invited person/customer label, used as a client-side fallback only */
   inviteeName?: string;
-  /** single-use HMAC token — carried in the URL fragment */
+  /** single-use HMAC token, carried in the URL fragment */
   token: string;
   /** role granted (members only) */
   role?: string;
@@ -89,7 +89,7 @@ export interface OrgInviteLink {
   orgName?: string;
   /** expiry (unix seconds) */
   expiresAt?: string;
-  /** product scope — an org invite is always "business" */
+  /** product scope, an org invite is always "business" */
   app?: AppScope;
 }
 
@@ -118,7 +118,7 @@ function prefix(base: "scheme" | "web"): string {
   return base === "web" ? `${WEB_BASE}/` : `${SCHEME}//`;
 }
 
-/** The effective scope of a link — legacy links with no tag are "consumer". */
+/** The effective scope of a link, legacy links with no tag are "consumer". */
 export function linkApp(link: BenzoLink): AppScope {
   return link.app ?? (link.type === "org" ? "business" : "consumer");
 }

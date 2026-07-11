@@ -1,5 +1,5 @@
 /**
- * MvkRegistryMirror — the off-chain twin the witness builders use for the
+ * MvkRegistryMirror, the off-chain twin the witness builders use for the
  * authorized-MVK membership proof. Verifies dedup, the nonzero rule, path
  * availability, and that the mirror's root equals a plain tree built from the
  * same `mvkRegistryLeaf` values (so a synced mirror matches the on-chain tree
@@ -53,7 +53,7 @@ describe("MvkRegistryMirror", () => {
     reg.syncLeaves(priorLeaves);
     expect(reg.root()).toBe(onchain.root()); // resumed root matches
 
-    // Appending a fresh MVK lands at index 2 — same as the chain would.
+    // Appending a fresh MVK lands at index 2, same as the chain would.
     const idx = reg.register(30n);
     expect(idx).toBe(2);
     onchain.insert(mvkRegistryLeaf(30n, 0n));

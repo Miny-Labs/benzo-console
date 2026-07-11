@@ -1,7 +1,7 @@
 /**
- * Keychain lock/unlock lifecycle as a pure reducer — the UI side of
+ * Keychain lock/unlock lifecycle as a pure reducer, the UI side of
  * @benzo/wallet's `Keychain`. Models the states a lock screen needs: no wallet
- * yet, locked, unlocking (deriving the wrapping key — scrypt/passkey is not
+ * yet, locked, unlocking (deriving the wrapping key, scrypt/passkey is not
  * instant), unlocked, or a failed attempt.
  */
 

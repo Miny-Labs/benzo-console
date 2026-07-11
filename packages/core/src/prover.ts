@@ -1,5 +1,5 @@
 /**
- * Headless Groth16 proving (Node — never a browser).
+ * Headless Groth16 proving (Node, never a browser).
  *
  * Wraps snarkjs `groth16.fullProve` over the compiled circuit artifacts
  * (witness-generator WASM + proving zkey) and returns both the snarkjs JSON
@@ -38,7 +38,7 @@ type WitnessValue = string | WitnessValue[];
 type BigNest = bigint | BigNest[];
 export type WitnessInput = Record<string, WitnessValue>;
 
-/** Recursively serialize bigints (any nesting depth — the org join-split needs
+/** Recursively serialize bigints (any nesting depth, the org join-split needs
  *  3D `mPathElements`) into snarkjs input form. */
 function serWitness(v: BigNest): WitnessValue {
   return typeof v === "bigint" ? v.toString() : v.map(serWitness);
@@ -78,7 +78,7 @@ export async function verifyLocal(
 /**
  * A pluggable proving backend: turns a witness into a Groth16 proof. Core builds
  * witnesses and calls a `ProverPort`; the runtime (Node / browser WASM / native)
- * decides *where* the proof is generated — so swapping runtimes never touches
+ * decides *where* the proof is generated, so swapping runtimes never touches
  * protocol logic. This is the seam that lets the same `BenzoClient` run headless
  * on the CLI and client-side in the browser.
  */
@@ -96,7 +96,7 @@ export class NodeProver implements ProverPort {
 }
 
 /**
- * On-device Groth16 proving via snarkjs — the same proof output as NodeProver,
+ * On-device Groth16 proving via snarkjs, the same proof output as NodeProver,
  * but it accepts preloaded `Uint8Array` artifacts (fetched once in the browser)
  * and never assumes `node:fs`, so it runs in a Web Worker on the user's device.
  * The witness and proving key never leave the device. `packages/proving-worker`

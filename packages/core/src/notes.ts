@@ -1,5 +1,5 @@
 /**
- * Benzo shielded notes — the canonical cryptographic invariants.
+ * Benzo shielded notes, the canonical cryptographic invariants.
  *
  * Key hierarchy (mirrors circuits/groth16/note.circom BenzoSpendKeys):
  *   ak (spend-auth) = Poseidon2(orgSpendId, 0)  (domain 0x06)
@@ -29,12 +29,12 @@ export const ORG_NOTE_DOMAIN = 0x09n;
 // --------------------------------------------------------------- org notes ----
 // An ORG note is a shielded note owned by an M-of-N member set, not a single key.
 // Its recipient_pk is the PREIMAGE-BOUND hash of (memberRoot, threshold, the
-// group spend-auth pub) under the ORG domain — so the only way to satisfy the
+// group spend-auth pub) under the ORG domain, so the only way to satisfy the
 // commitment's owner branch is the in-circuit M-of-N path in `joinsplit_org`
 // (`pool.transfer_org`). A single key can never move it: there is no `ak` whose
 // keypair pub equals an org recipient_pk. Mirrors circuits/groth16/org_note_spend.
 
-/** The org's GROUP spend-auth public — akGroup is the group key (FROST ak / dev). */
+/** The org's GROUP spend-auth public, akGroup is the group key (FROST ak / dev). */
 export function akGroupPub(akGroup: bigint): bigint {
   return hash([akGroup, 0n], KEYPAIR_DOMAIN);
 }
@@ -45,7 +45,7 @@ export function orgRecipientPk(memberRoot: bigint, threshold: bigint, akGroup: b
 }
 
 /**
- * Org-note nullifier — double-spend-safe AND unlinkable. Keyed by an org
+ * Org-note nullifier, double-spend-safe AND unlinkable. Keyed by an org
  * nullifier secret nk_org = Poseidon2(akGroup, blinding; NK), so two org notes
  * of the same set produce unrelated nullifiers (no org spend-graph leak):
  *   nullifier = Poseidon2(nk_org, leaf_index; NULLIFIER).
@@ -55,7 +55,7 @@ export function orgNullifier(akGroup: bigint, blinding: bigint, leafIndex: bigin
 }
 
 /**
- * Authorized-MVK registry leaf = Poseidon2(mvkPub, keyMeta) — mirrors
+ * Authorized-MVK registry leaf = Poseidon2(mvkPub, keyMeta), mirrors
  * circuits/groth16/note.circom BenzoMvkRegistryLeaf. A note's MVK tag is only
  * valid when this leaf is a member of the registered-MVK root, so every note is
  * bound to a real registered viewing key. `keyMeta` packs org/scope/expiry/epoch.
@@ -71,7 +71,7 @@ export interface SpendKeys {
 
 /**
  * Derive the spend-auth key `ak` and the SEPARATE nullifier key `nk` from one
- * root `orgSpendId` — mirrors circuits/groth16/note.circom BenzoSpendKeys.
+ * root `orgSpendId`, mirrors circuits/groth16/note.circom BenzoSpendKeys.
  * N=1 (consumer): orgSpendId is the account seed. M-of-N (org): orgSpendId is
  * split off-circuit via FROST with `ak` as the group key.
  */
@@ -113,7 +113,7 @@ export interface Note {
 
 export function noteCommitment(note: Note): bigint {
   // t=4 permutation over exactly [amount, recipient_pk, blinding, asset_id]
-  // (asset_id in the capacity slot) — see circuits/groth16/note.circom.
+  // (asset_id in the capacity slot), see circuits/groth16/note.circom.
   return hash([note.amount, note.recipientPk, note.blinding], note.assetId);
 }
 

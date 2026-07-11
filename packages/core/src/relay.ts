@@ -1,5 +1,5 @@
 /**
- * The gasless `transfer` relay argument shape — shared by the in-client relay
+ * The gasless `transfer` relay argument shape, shared by the in-client relay
  * hook (BenzoClient.makeRelay) and the standalone @benzo/relayer service, so the
  * fnArgs are defined once. Pure + browser-safe.
  */

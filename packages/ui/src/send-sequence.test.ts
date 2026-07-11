@@ -4,7 +4,7 @@ import { sendCeremonyView, ceremonyPhase, SEND_PHASE_FLOOR_MS } from "./send-seq
 
 const at = (phase: PaymentState["phase"], extra: Partial<PaymentState> = {}): PaymentState => ({ phase, ...extra });
 
-describe("send ceremony — phase mapping (slave to the machine)", () => {
+describe("send ceremony, phase mapping (slave to the machine)", () => {
   it("maps the full happy path through the reducer", () => {
     let s = initialPaymentState;
     s = paymentReducer(s, { type: "START" }); // building

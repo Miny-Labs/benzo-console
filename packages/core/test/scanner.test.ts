@@ -10,8 +10,8 @@ import {
 } from "../src/scanner.js";
 
 // collectEvents talks to Soroban RPC via the global `fetch`; mock it with a
-// queue of canned JSON-RPC envelopes so the two most failure-prone branches —
-// the retention-aged-out restart and the multi-page drain — get unit coverage
+// queue of canned JSON-RPC envelopes so the two most failure-prone branches -
+// the retention-aged-out restart and the multi-page drain, get unit coverage
 // (previously only exercised indirectly by live-testnet e2e).
 
 const realFetch = globalThis.fetch;

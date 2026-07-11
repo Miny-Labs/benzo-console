@@ -3,13 +3,13 @@
  *
  * Builds + proves the kyb_credential circuit: an org proves it holds a KYB
  * credential signed by an AUTHORIZED issuer, disclosing ONLY "verified business,
- * jurisdiction Y, tier Z" — WITHOUT revealing the underlying documents (only
+ * jurisdiction Y, tier Z", WITHOUT revealing the underlying documents (only
  * their hash is signed, and it stays private). A scope-bound `orgNullifier` gives
  * one-credential-per-scope Sybil resistance.
  *
  * Node-only (circomlibjs EdDSA/Poseidon/BabyJubJub); exported from index.ts. The
  * managed service holds the issuer key and re-issues credentials from a verified
- * identity (Plaid KYB / document IDV) — the docs never reach the chain.
+ * identity (Plaid KYB / document IDV), the docs never reach the chain.
  *
  * Public inputs: [issuerRegistryRoot, jurisdiction, tier, currentTime, scope,
  *                 orgNullifier, addressBinding].

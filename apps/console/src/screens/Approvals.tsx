@@ -1,5 +1,5 @@
 /**
- * Approvals — the dual-control release gate. Each payment awaiting approval reads as
+ * Approvals, the dual-control release gate. Each payment awaiting approval reads as
  * a structured three-area row: what it is (memo, counterparty, reference, proposer),
  * where it stands (M-of-N progress, policy, privacy, risk), and the decision (amount,
  * Deny, Approve). Denying requires a reason; approving that satisfies the policy
@@ -39,7 +39,7 @@ const HIGH_VALUE = 10_000n * 1_000_000n;
 /** "…on-chain" network prose without doubling "Mainnet" on a mainnet build. */
 const NETWORK_PROSE = `${NETWORK_LABEL}${NETWORK_ENV.kind === "mainnet" ? "" : ` ${NETWORK_ENV.badge}`}`;
 
-/** "2 hours ago" — a calm relative age for a proposed-at timestamp. */
+/** "2 hours ago", a calm relative age for a proposed-at timestamp. */
 function timeAgo(ts: string | number | Date): string {
   const then = new Date(ts).getTime();
   if (Number.isNaN(then)) return "";
@@ -79,7 +79,7 @@ function matchPolicy(p: PaymentOrder, policies: ApprovalPolicy[]): ApprovalPolic
   return matches.sort((a, b) => amountConds(b) - amountConds(a))[0];
 }
 
-/** Segmented M-of-N progress — filled segments for recorded approvals. */
+/** Segmented M-of-N progress, filled segments for recorded approvals. */
 function Progress({ have, need }: { have: number; need: number }) {
   return (
     <div data-testid="approval-progress">
@@ -176,7 +176,7 @@ export function Approvals() {
               const have = approvedTrail.length;
               const knownNeed = policy ? totalApprovers(policy) : null;
               // Only claim this approval RELEASES the payment when the threshold is
-              // actually known — an unresolved policy must not over-promise a settle.
+              // actually known, an unresolved policy must not over-promise a settle.
               const willRelease = knownNeed != null && have + 1 >= knownNeed;
               const need = knownNeed ?? Math.max(have + 1, 2); // display fallback for the progress bar
               const risky = BigInt(p.amount.amount) > HIGH_VALUE;
@@ -191,7 +191,7 @@ export function Approvals() {
                 >
                   <Card data-testid="approval-card">
                     <div className="grid gap-5 md:grid-cols-[1fr_auto_auto] md:items-start">
-                      {/* Left — what it is */}
+                      {/* Left, what it is */}
                       <div className="min-w-0">
                         <div className="t-card-title truncate text-fg">{p.memo ?? "Payment"}</div>
                         <div className="t-secondary mt-0.5">
@@ -204,7 +204,7 @@ export function Approvals() {
                         </div>
                       </div>
 
-                      {/* Middle — where it stands */}
+                      {/* Middle, where it stands */}
                       <div className="space-y-2.5 md:w-60 md:border-l md:border-border md:pl-5">
                         <Progress have={have} need={need} />
                         {have > 0 ? (
@@ -225,7 +225,7 @@ export function Approvals() {
                         </div>
                       </div>
 
-                      {/* Right — the decision */}
+                      {/* Right, the decision */}
                       <div className="flex flex-col items-end gap-3 md:w-44 md:pl-5">
                         <div className="font-display tnum text-2xl font-semibold text-fg" data-testid="approval-amount">
                           {masked || p.privacy.amountHidden ? "••••••" : fmtUsd(p.amount.amount)}
@@ -296,7 +296,7 @@ export function Approvals() {
                         <StatusPill status={p.status} />
                       )}
                     </Td>
-                    <Td>{last ? `${memberName(last.approverMemberId)}${memberRole(last.approverMemberId) ? ` · ${memberRole(last.approverMemberId)}` : ""}` : "—"}</Td>
+                    <Td>{last ? `${memberName(last.approverMemberId)}${memberRole(last.approverMemberId) ? ` · ${memberRole(last.approverMemberId)}` : ""}` : "-"}</Td>
                     <Td align="right" className="tnum">
                       {masked || p.privacy.amountHidden ? "••••••" : fmtUsd(p.amount.amount)}
                     </Td>
@@ -311,7 +311,7 @@ export function Approvals() {
                           Receipt <ExternalLink size={12} />
                         </a>
                       ) : (
-                        <span className="text-muted">—</span>
+                        <span className="text-muted">-</span>
                       )}
                     </Td>
                   </Tr>
@@ -322,7 +322,7 @@ export function Approvals() {
         </div>
       ) : null}
 
-      {/* Approve confirm — releases explicitly say what happens on-chain. */}
+      {/* Approve confirm, releases explicitly say what happens on-chain. */}
       <Modal
         open={!!confirm}
         onClose={() => busy === null && setConfirm(null)}
@@ -382,7 +382,7 @@ export function Approvals() {
           <p className="t-helper">A reason is recorded in the audit trail and shared with the proposer.</p>
           <Textarea
             label="Reason for denial"
-            placeholder="e.g. Duplicate of PO-4480 — already paid."
+            placeholder="e.g. Duplicate of PO-4480, already paid."
             value={denyReason}
             onChange={(e) => setDenyReason(e.target.value)}
             data-testid="deny-reason"

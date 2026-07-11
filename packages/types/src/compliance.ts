@@ -8,8 +8,8 @@ import type {
 /**
  * Disclosure tiers mirror Penumbra/Zcash key hierarchy:
  *  - full     = full-history read (FVK)
- *  - incoming = only payments the scope RECEIVED (IVK) — e.g. show a supplier
- *  - outgoing = only payments the scope SENT (OVK) — e.g. show payroll outflows
+ *  - incoming = only payments the scope RECEIVED (IVK), e.g. show a supplier
+ *  - outgoing = only payments the scope SENT (OVK), e.g. show payroll outflows
  */
 export type DisclosureTier = "full" | "incoming" | "outgoing";
 
@@ -39,7 +39,7 @@ export interface ViewingGrant {
   auditorPubKey: string;
   tier: DisclosureTier;
   scope: GrantScope;
-  /** TVK ciphertext (sealed to auditorPubKey) — delivered via the portal */
+  /** TVK ciphertext (sealed to auditorPubKey), delivered via the portal */
   tvkCiphertext?: string;
   /** on-chain hash commitment of the scoped key (tamper-evidence) */
   onChainKeyHash?: string;
@@ -52,7 +52,7 @@ export interface ViewingGrant {
 }
 
 /**
- * A per-jurisdiction compliance partition — the ASP allow/deny root set the
+ * A per-jurisdiction compliance partition, the ASP allow/deny root set the
  * org's deposits/withdrawals are screened against (maps to Benzo asp_registry).
  */
 export interface ComplianceZone {

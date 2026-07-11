@@ -1,5 +1,5 @@
 /**
- * Auditor access — issue a scoped, read-only viewing key so an auditor sees exactly
+ * Auditor access, issue a scoped, read-only viewing key so an auditor sees exactly
  * the in-scope notes (a corridor/period), nothing else, and revoke it on-chain. Two
  * tabs: Access (the grant register + revoke) and Attestations (a network-verified
  * period-total report). Private by default, disclosable on your terms.
@@ -39,7 +39,7 @@ type PeriodTotal = Awaited<ReturnType<typeof api.periodTotalAttestation>>;
 type TabId = "access" | "attestations";
 type AccessFilter = "active" | "inactive";
 
-/** De-jargoned disclosure tiers — no bare "outgoing"/"incoming"/"full" in the UI. */
+/** De-jargoned disclosure tiers, no bare "outgoing"/"incoming"/"full" in the UI. */
 const TIER_LABEL: Record<DisclosureTier, string> = {
   full: "Full access",
   incoming: "Incoming payments",
@@ -50,7 +50,7 @@ const TIER_LABEL: Record<DisclosureTier, string> = {
 const ATTEST_TITLES: CeremonyTitles = {
   encrypt: { title: "Loading the period's notes", sub: "Gathering the in-scope notes and building the witness" },
   settle: { title: "Folding the ORGSUM proof", sub: "Proving the total on-chain without revealing a single salary" },
-  verify: { title: "Verified on-chain — Merkle root revealed", sub: "Here's your downloadable, re-verifiable attestation" },
+  verify: { title: "Verified on-chain, Merkle root revealed", sub: "Here's your downloadable, re-verifiable attestation" },
   error: { title: "Couldn't prove the total" },
 };
 
@@ -315,7 +315,7 @@ export function Grants() {
                           <XCircle size={14} /> Revoke
                         </Button>
                       ) : (
-                        <span className="text-muted">—</span>
+                        <span className="text-muted">-</span>
                       )}
                     </Td>
                   </Tr>
@@ -330,7 +330,7 @@ export function Grants() {
             <FileCheck size={16} className="text-primary" /> Period total for tax / audit
           </div>
           <p className="t-helper mt-1 max-w-2xl">
-            Export a network-verified statement of what you paid out for a period — the total is proven on-chain; the individual
+            Export a network-verified statement of what you paid out for a period, the total is proven on-chain; the individual
             salaries stay hidden. The file embeds the proof so your auditor can re-verify it independently.
           </p>
           <div className="mt-4 flex items-end gap-3">
@@ -344,7 +344,7 @@ export function Grants() {
           <details className="mt-4 text-[12.5px] text-muted">
             <summary className="cursor-pointer select-none font-medium text-fg outline-none focus-visible:ring-2 focus-visible:ring-primary/40">Technical details</summary>
             <p className="mt-2 max-w-2xl leading-relaxed">
-              Soundness: this proves the disclosed notes sum to the stated total — not that the set is complete. It attests the total
+              Soundness: this proves the disclosed notes sum to the stated total, not that the set is complete. It attests the total
               you claim; it does not detect a payout deliberately left out (completeness is bounded only by the authorized-key registry).
             </p>
           </details>
@@ -403,7 +403,7 @@ export function Grants() {
       >
         <p className="text-sm text-muted">
           This revokes <b>{confirmRevoke?.auditorName}</b>'s read-only access on-chain, immediately. They'll lose visibility into the
-          granted scope and you can't undo it — you'd have to grant new access.
+          granted scope and you can't undo it, you'd have to grant new access.
         </p>
       </Modal>
     </Screen>

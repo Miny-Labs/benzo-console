@@ -92,7 +92,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   // Mirror the live session in a ref so refresh()'s catch can tell "we already
   // have a workspace to keep" (a transient failure should stay on the shell) from
   // "the first load hasn't landed yet" (a transient failure should stay on the
-  // loading screen — never the sign-in screen).
+  // loading screen, never the sign-in screen).
   const sessionRef = useRef<AuthSession | null>(null);
 
   const clearReadModels = useCallback(() => {
@@ -137,7 +137,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
         if (sessionRef.current) {
           // Mid-session: keep the workspace and its last-loaded data on screen,
           // just surface a reconnecting note; the boot retry / 30s poll recover.
-          setError("Couldn't refresh — reconnecting…");
+          setError("Couldn't refresh, reconnecting…");
           setLoading(false);
         } else {
           // First load hasn't succeeded yet: stay on the "Loading workspace…"
@@ -195,7 +195,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   }, [clearReadModels]);
 
   // Switching workspace must reload the org-scoped read models, not just the
-  // label — otherwise the UI shows one workspace's name over another's data.
+  // label, otherwise the UI shows one workspace's name over another's data.
   const setActiveOrg = useCallback((id: string) => {
     setSession((current) => (current ? sessionWithActiveOrg(current, id) : current));
     void refresh();
@@ -242,7 +242,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // #61: a confirmed 401 (session expired) is signalled by AUTH_REQUIRED_EVENT via
-  // notifyAuthRequired(). This — and an explicit logout (AUTH_CHANGED) — are the
+  // notifyAuthRequired(). This, and an explicit logout (AUTH_CHANGED), are the
   // ONLY things that clear auth in real mode; a transient read failure never fires
   // it, so it can no longer strand a live session on the sign-in screen.
   useEffect(() => {

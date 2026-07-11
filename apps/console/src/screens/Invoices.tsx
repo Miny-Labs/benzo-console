@@ -1,5 +1,5 @@
 /**
- * Invoices — AP inbox and the second front-door into the pay engine. Contractor /
+ * Invoices, AP inbox and the second front-door into the pay engine. Contractor /
  * vendor invoices land here and settle through the SAME maker-checker + confidential
  * settlement as a payroll run (over the policy threshold → Approvals first).
  *
@@ -72,7 +72,7 @@ function isPayable(inv: Invoice): boolean {
 }
 
 /**
- * Display lifecycle — derives Due soon / Overdue from a real due date so the pill
+ * Display lifecycle, derives Due soon / Overdue from a real due date so the pill
  * carries operational meaning (never leaks a spurious time; dates render date-only).
  * Terminal states pass through unchanged.
  */
@@ -81,7 +81,7 @@ function displayStatus(inv: Invoice): string {
   if (inv.status === "partially_paid") return "partially_paid";
   if (inv.status === "cancelled") return "cancelled";
   // Honor an explicit server-set "overdue" even if the local dueDate math wouldn't
-  // derive it (missing/future dueDate) — don't silently downgrade it to "open".
+  // derive it (missing/future dueDate), don't silently downgrade it to "open".
   if (inv.status === "overdue") return "overdue";
   if (inv.dueDate) {
     const days = (new Date(inv.dueDate).getTime() - Date.now()) / 86_400_000;
@@ -171,7 +171,7 @@ export function Invoices() {
     });
   }
 
-  /** The settled payment behind a paid invoice — carries the on-chain receipt + date. */
+  /** The settled payment behind a paid invoice, carries the on-chain receipt + date. */
   const paymentFor = (inv: Invoice) => payments.find((p) => inv.paymentOrderIds.includes(p.id));
 
   async function pay(inv: Invoice) {
@@ -202,7 +202,7 @@ export function Invoices() {
   }
 
   // Bulk review → pay: run each selected invoice through the SAME engine. Lines resolve
-  // independently — some settle, some route to Approvals — so we report both counts.
+  // independently, some settle, some route to Approvals, so we report both counts.
   async function paySelected() {
     setPayingAll(true);
     let paid = 0;
@@ -245,7 +245,7 @@ export function Invoices() {
         <Tabs items={tabs} active={tab} onChange={setTab} />
       </div>
 
-      {/* Selection bar — appears once at least one payable row is checked. Review, don't blind-pay. */}
+      {/* Selection bar, appears once at least one payable row is checked. Review, don't blind-pay. */}
       {selected.size > 0 ? (
         <Card compact className="mb-4 flex flex-wrap items-center justify-between gap-3" data-testid="selection-bar">
           <div className="t-body text-fg">
@@ -337,7 +337,7 @@ export function Invoices() {
                     ) : null}
                   </Td>
                   <Td>{name(inv.counterpartyId)}</Td>
-                  <Td>{inv.dueDate ? fmtDate(inv.dueDate) : "—"}</Td>
+                  <Td>{inv.dueDate ? fmtDate(inv.dueDate) : "-"}</Td>
                   <Td>
                     <StatusPill status={status} />
                   </Td>
@@ -371,7 +371,7 @@ export function Invoices() {
                         ) : null}
                       </div>
                     ) : (
-                      <span className="text-muted">—</span>
+                      <span className="text-muted">-</span>
                     )}
                   </Td>
                 </Tr>
@@ -412,7 +412,7 @@ export function Invoices() {
             <dl className="rounded-lg border border-border bg-bg px-4 py-3 text-sm">
               <Row label="Invoice" value={review.number} />
               <Row label="Payee" value={name(review.counterpartyId)} />
-              <Row label="Due date" value={review.dueDate ? fmtDate(review.dueDate) : "—"} />
+              <Row label="Due date" value={review.dueDate ? fmtDate(review.dueDate) : "-"} />
               <Row label="Amount" value={masked ? "••••••" : <Amount minor={review.total.amount} code="USDC" />} />
               <Row label="Network fee" value={<span className="text-success">Free</span>} />
             </dl>

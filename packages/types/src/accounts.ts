@@ -11,7 +11,7 @@ import type { PaymentAddress } from "./org.js";
 /** Internal ledger account kinds an org operates. */
 export type AccountType = "operating" | "payroll" | "treasury";
 
-/** An internal account — a named bucket of shielded value the ledger tracks. */
+/** An internal account, a named bucket of shielded value the ledger tracks. */
 export interface Account {
   id: AccountId;
   orgId: OrgId;
@@ -51,7 +51,7 @@ export type CounterpartyStatus =
   | "allowlisted"
   | "blocked";
 
-/** A payee/payer — a first-class, shared org object. */
+/** A payee/payer, a first-class, shared org object. */
 export interface Counterparty {
   id: CounterpartyId;
   orgId: OrgId;
@@ -67,7 +67,7 @@ export interface Counterparty {
   /** tax form on file */
   taxFormType?: "W9" | "W8-BEN" | "none";
   /**
-   * Pay rate card — the source-of-truth a payroll run COMPUTES each line from
+   * Pay rate card, the source-of-truth a payroll run COMPUTES each line from
    * (server-side, never trusting a caller-supplied amount). v1 = a fixed
    * recurring retainer; hours×rate / milestones are a fast-follow.
    */

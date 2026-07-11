@@ -1,8 +1,8 @@
 /**
- * React bindings — thin `useReducer`/`useState` wrappers over the pure state
+ * React bindings, thin `useReducer`/`useState` wrappers over the pure state
  * machines in this package. All real logic lives in the reducers (tested
  * headlessly); these just connect them to React so a screen consumes one hook.
- * `react` is an optional peer dependency — import these only in a React app.
+ * `react` is an optional peer dependency, import these only in a React app.
  */
 import { useCallback, useReducer, useState } from "react";
 import { Keychain, type KVStore, type WalletSecrets } from "@benzo/wallet";

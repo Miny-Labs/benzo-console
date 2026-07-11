@@ -8,7 +8,7 @@ const ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 
 const opName = (op: any) => op.body().switch().name;
 
-describe("sponsored reserves (CAP-33) — gasless onboarding", () => {
+describe("sponsored reserves (CAP-33), gasless onboarding", () => {
   it("creates the begin/create/end sandwich in order", () => {
     const ops = sponsoredCreateAccountOps({ sponsor: SPONSOR, newAccount: NEW });
     expect(ops).toHaveLength(3);

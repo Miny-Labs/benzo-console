@@ -1,5 +1,5 @@
 /**
- * BenzoClient — the single, UI-facing SDK facade.
+ * BenzoClient, the single, UI-facing SDK facade.
  *
  * A frontend (or any caller) uses ONLY this class: it hides the pool client,
  * the note scanner/indexer, the headless prover, and the viewing-key crypto
@@ -774,14 +774,14 @@ export class BenzoClient {
   }
 
   /**
-   * Confidential payroll from the org treasury — one `pool.transfer_org` per
+   * Confidential payroll from the org treasury, one `pool.transfer_org` per
    * payout under a ≥threshold member quorum (dual control enforced in-circuit).
    * The treasury note covering the whole run is spent and its remainder rolls
    * into a fresh CHANGE org note each time, so the treasury stays confidential
    * AND dual-controlled across the run. Individual salaries are never revealed
    * on-chain (each payout is its own confidential transfer).
    *
-   * `signerIndices` are the approving members (≥ threshold) — the cryptographic
+   * `signerIndices` are the approving members (≥ threshold), the cryptographic
    * embodiment of the maker-checker quorum. `sign(memberIndex, message)` lets
    * each approver self-sign client-side; omit it to sign from the derived keys.
    */
@@ -857,7 +857,7 @@ export class BenzoClient {
   }
 
   /**
-   * BATCHED confidential payroll — settle a run with ONE `batch_transfer_org` per
+   * BATCHED confidential payroll, settle a run with ONE `batch_transfer_org` per
    * chunk (one combined on-chain verification) instead of one tx per payout.
    *
    * Unlike `orgPayroll` (which chains a single covering note's change across
@@ -867,7 +867,7 @@ export class BenzoClient {
    * `maxPerTx` (default 8, inside the ~10-15 measured real-testnet limit) and
    * larger runs are auto-chunked into multiple batch txs (re-syncing between
    * chunks so change notes become spendable). HONEST: this batches VERIFICATION,
-   * not settlement — the win is one pairing check + one tx per chunk, not "all in
+   * not settlement, the win is one pairing check + one tx per chunk, not "all in
    * one proof".
    */
   async orgBatchPayroll(opts: {
@@ -899,7 +899,7 @@ export class BenzoClient {
       await this.sync();
 
       // Assign a DISTINCT covering treasury note to each payout (largest-first,
-      // each note used at most once — the contract also rejects intra-batch
+      // each note used at most once, the contract also rejects intra-batch
       // double-spends, but we must not even propose one).
       const avail = this.orgTreasuryNotes(org)
         .slice()
@@ -1059,7 +1059,7 @@ export class BenzoClient {
       }
     } catch (e) {
       if (e instanceof Error && e.message.includes("insufficient USDC")) throw e;
-      // else: read failure / no trustline — let the on-chain transfer decide.
+      // else: read failure / no trustline, let the on-chain transfer decide.
     }
   }
 
@@ -1144,7 +1144,7 @@ export class BenzoClient {
       const assetId = await this.assetId();
 
       // Spend one covering note (+ a dummy), or two notes when no single note
-      // covers the amount — the joinsplit circuit takes two inputs either way.
+      // covers the amount, the joinsplit circuit takes two inputs either way.
       //
       // On long-lived testnet deployments RPC event retention can leave the
       // local pool mirror gapped. The Merkle contract storage can recover a
@@ -1211,7 +1211,7 @@ export class BenzoClient {
         mvkCt: seal(changePlain, senderTvk.publicKey).bytes,
       };
       // Privacy: randomize output order so the change note isn't always in slot 1
-      // — otherwise an observer learns which output is the payment vs the change.
+      //, otherwise an observer learns which output is the payment vs the change.
       // Tornado-nova shuffles outputs for exactly this reason; discovery is
       // order-independent (the recipient finds its note by view tag, any slot).
       const [b0, b1] =
@@ -1504,7 +1504,7 @@ export class BenzoClient {
    * Confidential payroll / invoicing: pay many recipients in one batch where
    * each payout is an independent shielded transfer, so individual amounts and
    * recipients stay hidden on-chain. The employer can later prove the TOTAL to
-   * an auditor with `proveTotal()` (a ZK proof-of-sum verified on-chain) —
+   * an auditor with `proveTotal()` (a ZK proof-of-sum verified on-chain) -
    * salaries private, totals provable. Payouts settle sequentially.
    */
   async payroll(opts: {
@@ -1527,7 +1527,7 @@ export class BenzoClient {
   }
 
   /**
-   * @deprecated NOT zero-knowledge — this sums the in-scope notes in the clear
+   * @deprecated NOT zero-knowledge, this sums the in-scope notes in the clear
    * and asks the auditor to trust the figure (no proof). Use {@link proveTotal},
    * which produces a `proof_of_sum` Groth16 proof that verifies on-chain (vk_id
    * `SUM`). Kept only for debugging / back-compat; do not surface it as "the"
@@ -1541,7 +1541,7 @@ export class BenzoClient {
   // ----------------------------------------------------- proof-of-balance ----
 
   /**
-   * Prove this account owns at least `minAmount` USDC in the shielded pool —
+   * Prove this account owns at least `minAmount` USDC in the shielded pool -
    * without revealing the exact balance, the note count, or which notes. Returns
    * the proof in both snarkjs and Soroban-encoded forms (ready for the on-chain
    * verifier) plus the public inputs. Requires `circuits.proofOfBalance`.
@@ -1593,10 +1593,10 @@ export class BenzoClient {
    *
    * The old version collapsed three very different outcomes into a single bare
    * `false`: (1) the VK isn't registered on this cluster (`vk-unregistered`),
-   * (2) the proof is genuinely invalid (`invalid-proof` — the verifier traps
+   * (2) the proof is genuinely invalid (`invalid-proof`, the verifier traps
    * `InvalidProof` and fails closed), and (3) a transport/RPC failure
    * (`rpc-error`). Conflating them made a real, valid proof against an
-   * unregistered VK read as "verified then false" — i.e. ZK theater. We now
+   * unregistered VK read as "verified then false", i.e. ZK theater. We now
    * pre-check `has_vk` and classify the trap so the caller (and the logs) can
    * tell a missing key from a bad proof from a flaky RPC.
    */
@@ -1659,13 +1659,13 @@ export class BenzoClient {
   }
 
   /**
-   * Prove this account's shielded holdings sum to an EXACT total — the
+   * Prove this account's shielded holdings sum to an EXACT total, the
    * confidential disclose-total, a cryptographic replacement for the plaintext
    * `disclosedTotal`. Reveals only the total, never any individual amount.
    * Requires `circuits.proofOfSum`. Aggregates up to 4 notes (circuit-fixed).
    *
    * Completeness note: this proves "these owned notes sum to `total`", not
-   * "these are ALL my notes" — set-completeness composes with the authorized-MVK
+   * "these are ALL my notes", set-completeness composes with the authorized-MVK
    * registry binding.
    */
   async proveTotal(opts?: { context?: bigint }): Promise<{
@@ -1709,7 +1709,7 @@ export class BenzoClient {
   }
 
   /**
-   * ORG proof-of-sum — disclose the M-of-N TREASURY total to an auditor as a real
+   * ORG proof-of-sum, disclose the M-of-N TREASURY total to an auditor as a real
    * Groth16 proof verified ON-CHAIN (vk_id ORGSUM), revealing only the total, not
    * any individual salary. Unlike `proveTotal` (single-key notes), this proves the
    * sum over ORG notes owned by the member set. Aggregates up to MAX_SUM_NOTES.
@@ -1758,10 +1758,10 @@ export class BenzoClient {
   }
 
   /**
-   * ORG proof-of-balance — prove the M-of-N treasury holds AT LEAST `minTotal`,
+   * ORG proof-of-balance, prove the M-of-N treasury holds AT LEAST `minTotal`,
    * verified ON-CHAIN (vk_id ORGBAL), revealing nothing else. Powers the cryptographic
    * "Payroll funded ✓" (minTotal = run total), reserves-to-lender (covenant), and
-   * true solvency (minTotal = Σ liabilities). Returns `{ holds, onChain }` —
+   * true solvency (minTotal = Σ liabilities). Returns `{ holds, onChain }` -
    * `holds:false` (no proof) when the treasury can't cover the floor.
    */
   async proveOrgBalance(opts: { org: OrgIdentity; minTotal: bigint; context?: bigint }): Promise<{
@@ -1803,10 +1803,10 @@ export class BenzoClient {
   }
 
   /**
-   * In-ZK spending policy (Z3) — prove a payout to `to` of `amount` is WITHIN the
+   * In-ZK spending policy (Z3), prove a payout to `to` of `amount` is WITHIN the
    * approved per-payout `cap`, verified ON-CHAIN (vk_id SPENDCAP), WITHOUT
    * revealing the amount. The limit is a circuit constraint, so an over-cap payout
-   * cannot produce a proof — `withinCap:false` is a cryptographic "no". Use as a
+   * cannot produce a proof, `withinCap:false` is a cryptographic "no". Use as a
    * pre-settlement gate: a line that can't prove ≤ cap is provably blocked.
    */
   async proveOrgPayoutCap(opts: {
@@ -1849,7 +1849,7 @@ export class BenzoClient {
   }
 
   /**
-   * Per-payout proof-of-innocence (Z4) — prove a payout's RECIPIENT is NOT on a
+   * Per-payout proof-of-innocence (Z4), prove a payout's RECIPIENT is NOT on a
    * sanctions / deny set (OFAC-style deny SMT), verified ON-CHAIN (vk_id
    * POIPAYOUT), WITHOUT revealing the recipient. A sanctioned recipient is found
    * in the deny SMT ⇒ no non-inclusion proof exists ⇒ `innocent:false`, the
@@ -1895,7 +1895,7 @@ export class BenzoClient {
   }
 
   /**
-   * Anonymous approver / surveillance-free dual-control (Z5) — prove ≥`threshold`
+   * Anonymous approver / surveillance-free dual-control (Z5), prove ≥`threshold`
    * DISTINCT org approvers signed off on a run (`spendMessage`), verified ON-CHAIN
    * (vk_id ORGAUTH), WITHOUT revealing WHICH approvers signed. Dual-control
    * becomes a property of the proof; the approval leaves no surveillance trail of
@@ -1945,7 +1945,7 @@ export class BenzoClient {
   }
 
   /**
-   * Verifiable payroll computation (Z6) — prove the run total AND each per-line
+   * Verifiable payroll computation (Z6), prove the run total AND each per-line
    * note commitment were CORRECTLY DERIVED from the rate card (gross = rate ×
    * period − deductions, runTotal = Σ gross), verified ON-CHAIN (vk_id PAYCOMP),
    * with the RATE CARD kept PRIVATE. The total is computed-not-asserted: the chain
@@ -1978,7 +1978,7 @@ export class BenzoClient {
   }
 
   /**
-   * KYB-as-ZK credential (Z7) — prove the org holds an issuer-signed KYB
+   * KYB-as-ZK credential (Z7), prove the org holds an issuer-signed KYB
    * credential, disclosing only "verified business, jurisdiction Y, tier Z",
    * verified ON-CHAIN (vk_id KYB), WITHOUT revealing the documents. Emits a
    * scope-bound `orgNullifier` for one-credential-per-scope Sybil resistance.
@@ -2023,7 +2023,7 @@ export class BenzoClient {
   }
 
   /**
-   * Cross-entity private netting (Z8) — prove two parties' mutual inter-company
+   * Cross-entity private netting (Z8), prove two parties' mutual inter-company
    * invoices net to a single `net` amount (paid by the larger debtor), verified
    * ON-CHAIN (vk_id NETTING), WITHOUT revealing either gross. The two orgs settle
    * only the difference. Returns `net` + `payerIsA` (1 = A pays B, 0 = B pays A).
@@ -2116,7 +2116,7 @@ export class BenzoClient {
   /**
    * Create a claim link: privately send `amount` to a fresh account derived
    * from a random claim secret, and return a link carrying that secret. Anyone
-   * with the link can claim the funds — no prior account or on-chain state.
+   * with the link can claim the funds, no prior account or on-chain state.
    */
   async createClaimLink(opts: {
     amount: bigint;
@@ -2142,7 +2142,7 @@ export class BenzoClient {
   /**
    * Claim a link's funds into a public Stellar address. This client ADOPTS the
    * claim account (derived from the secret), scans, and unshields the full
-   * balance to `toAddress` — settling the claim on-chain.
+   * balance to `toAddress`, settling the claim on-chain.
    */
   async claim(opts: {
     claimSecret: Uint8Array;
@@ -2389,7 +2389,7 @@ export function stroopsToUsdc(stroops: bigint): string {
 
 /**
  * Parse a human USDC amount ("25", "25.50", "0.0000001") to stroops (1 USDC =
- * 1e7), losslessly via string math — unlike `BigInt(Math.round(n * 1e7))`,
+ * 1e7), losslessly via string math, unlike `BigInt(Math.round(n * 1e7))`,
  * which loses precision past ~9e9 USDC or beyond 7 decimals.
  */
 export function usdcToStroops(amount: string): bigint {

@@ -1,5 +1,5 @@
 /**
- * One-off payment — create a single confidential payment outside of payroll/invoices.
+ * One-off payment, create a single confidential payment outside of payroll/invoices.
  * Pick a funding account and who you're paying; a live review summary on the right
  * fills in as you go (source, recipient, amount, fee, network, privacy, approval,
  * settlement). "Review payment" gates a send: over-threshold payments route to
@@ -56,7 +56,7 @@ export function Pay() {
   const busy = isInFlight(paymentState);
   const ceremonyOpen = paymentState.phase !== "idle";
 
-  // The one honest reason the primary is disabled — shown next to a neutral-gray button.
+  // The one honest reason the primary is disabled, shown next to a neutral-gray button.
   const disabledReason = !fromAccountId
     ? "Choose the account to pay from."
     : !toCounterpartyId
@@ -186,9 +186,9 @@ export function Pay() {
               <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[13px] text-muted">
                 {payee.status ? <StatusPill status={payee.status} /> : null}
                 {hasHandle ? (
-                  <span>Payout handle on file — eligible to receive.</span>
+                  <span>Payout handle on file, eligible to receive.</span>
                 ) : (
-                  <span className="text-warning">No payout handle yet — may not settle until onboarded.</span>
+                  <span className="text-warning">No payout handle yet, may not settle until onboarded.</span>
                 )}
               </div>
             ) : null}
@@ -205,7 +205,7 @@ export function Pay() {
           />
           <Input
             label="Note (optional)"
-            hint="Internal reference — visible to authorized workspace members, not on-chain."
+            hint="Internal reference, visible to authorized workspace members, not on-chain."
             placeholder="PO-4480 components"
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
@@ -286,7 +286,7 @@ export function Pay() {
               />
               <SummaryRow label="Network fee" value={<span className="text-success">Free</span>} />
               <SummaryRow label="Network" value={NETWORK_ENV.chip} />
-              <SummaryRow label="Privacy" value="Private on-chain — amount and recipient hidden" />
+              <SummaryRow label="Privacy" value="Private on-chain, amount and recipient hidden" />
               <SummaryRow
                 label="Approval"
                 value={
@@ -308,7 +308,7 @@ export function Pay() {
   );
 }
 
-const placeholder = <span className="text-muted">—</span>;
+const placeholder = <span className="text-muted">-</span>;
 
 function SummaryRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (

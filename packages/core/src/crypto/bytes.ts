@@ -1,5 +1,5 @@
 /**
- * Byte helpers — hex / base64url / concat over Uint8Array.
+ * Byte helpers, hex / base64url / concat over Uint8Array.
  *
  * Core uses these instead of Node's `Buffer` so the protocol modules bundle for
  * the browser without a Buffer polyfill. `btoa`/`atob` are globals in Node 20+

@@ -60,7 +60,7 @@ export interface CircuitSet {
   joinsplitOrg?: CircuitArtifacts;
   /** optional proof-of-balance circuit (prove funds ≥ threshold) */
   proofOfBalance?: CircuitArtifacts;
-  /** optional proof-of-sum circuit (disclose an EXACT total — confidential disclose-total) */
+  /** optional proof-of-sum circuit (disclose an EXACT total, confidential disclose-total) */
   proofOfSum?: CircuitArtifacts;
   /** optional ORG proof-of-sum (disclose the M-of-N treasury total, ZK, verified on-chain) */
   proofOfSumOrg?: CircuitArtifacts;
@@ -141,7 +141,7 @@ export class BenzoPoolClient {
    * Use a shared, on-chain-synced MVK registry mirror for all subsequent money
    * ops. Every MVK a note binds to must already be `register`ed in `mirror`
    * (and on-chain) so its root is a known registry root; `pathFor` throws
-   * otherwise — the correct fail-closed behavior for an unregistered key.
+   * otherwise, the correct fail-closed behavior for an unregistered key.
    */
   useMvkRegistry(mirror: MvkRegistryMirror): void {
     this.mvkRegistry = mirror;
@@ -383,7 +383,7 @@ export class BenzoPoolClient {
     /**
      * Optional gasless-relay hook. When provided, the proven transfer is
      * handed to the relayer for submission instead of being submitted by this
-     * client — the relayer pays the XLM fee. The proof is self-authorizing, so
+     * client, the relayer pays the XLM fee. The proof is self-authorizing, so
      * the relayer cannot alter the transfer.
      */
     relay?: (args: {
@@ -456,7 +456,7 @@ export class BenzoPoolClient {
     });
 
     // Authorized-MVK registry membership for each output's MVK (closes the audit
-    // P0 — see shield). A shared synced registry (if set) yields an on-chain-known
+    // P0, see shield). A shared synced registry (if set) yields an on-chain-known
     // root; otherwise build a local one over just this op's outputs.
     const mvkKeyMeta = DEFAULT_MVK_KEY_META;
     let mvkReg: MvkRegistryMirror;
@@ -610,7 +610,7 @@ export class BenzoPoolClient {
   /**
    * Spend an ORG treasury note under in-circuit M-of-N dual control
    * (`pool.transfer_org`, VK `JSPLITORG`). The org note can ONLY move because
-   * ≥ threshold distinct members signed the spend message — the cryptographic
+   * ≥ threshold distinct members signed the spend message, the cryptographic
    * embodiment of a maker-checker approval, enforced in-circuit, not by a server.
    *
    * input0 = the org note (owner = org.recipientPk); input1 = a genuine zero
@@ -625,7 +625,7 @@ export class BenzoPoolClient {
    */
   /**
    * Build ONE org join-split: validate, assemble the witness, and prove
-   * `joinsplit_org` — WITHOUT submitting. Returns the proof + the JSON-ready
+   * `joinsplit_org`, WITHOUT submitting. Returns the proof + the JSON-ready
    * `OrgSpend` struct (matching the pool's `OrgSpend` contract type) so the
    * caller can either submit a single `transfer_org` (see `transferOrg`) or
    * bundle many into one `batch_transfer_org` (see `batchTransferOrg`). The
@@ -677,7 +677,7 @@ export class BenzoPoolClient {
     const root = this.poolTree.root();
 
     // Pad the candidate set to MAX_ORG_SIGNERS slots (unused slots reuse a real
-    // member with enabled=0 — the circuit only verifies enabled slots).
+    // member with enabled=0, the circuit only verifies enabled slots).
     const cand = Array.from({ length: MAX_ORG_SIGNERS }, (_, i) =>
       i < org.members.length ? i : 0,
     );
@@ -721,7 +721,7 @@ export class BenzoPoolClient {
       "--mvk_ct1", hexBytes(opts.mvkCts[1]),
     ]);
 
-    // spend message = Poseidon(n0,n1,c0,c1) — collect approvals LAST.
+    // spend message = Poseidon(n0,n1,c0,c1), collect approvals LAST.
     const spendMessage = await orgSpendMessage(n0, n1, outCommitments[0], outCommitments[1]);
     const getSig = async (slot: number): Promise<OrgSignature> => {
       const member = org.members[cand[slot]];
@@ -807,7 +807,7 @@ export class BenzoPoolClient {
   }
 
   /**
-   * Single org join-split (M-of-N dual control) — settles under the JSPLITORG VK.
+   * Single org join-split (M-of-N dual control), settles under the JSPLITORG VK.
    * Thin wrapper over `buildOrgSpend` + a `transfer_org` submit (unchanged shape).
    */
   async transferOrg(opts: {
@@ -1045,7 +1045,7 @@ export class BenzoPoolClient {
     ]);
 
     // Authorized-MVK registry membership of the change note's MVK (closes the
-    // audit P0 — see shield). Shared synced registry (if set) → on-chain-known
+    // audit P0, see shield). Shared synced registry (if set) → on-chain-known
     // root; otherwise a single-leaf stand-in over the change MVK.
     const mvkKeyMeta = DEFAULT_MVK_KEY_META;
     const mvkReg = opts.changeMvkWitness ? undefined : (this.mvkRegistry ?? MvkRegistryMirror.singleLeaf(opts.changeMvkPubScalar, mvkKeyMeta));

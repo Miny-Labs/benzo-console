@@ -31,7 +31,7 @@ export interface RecurringConfig {
 }
 
 /**
- * A private invoice. The hosted page lives at a secret URL — that URL *is* the
+ * A private invoice. The hosted page lives at a secret URL, that URL *is* the
  * viewing grant (the payer reconstructs only this invoice). Reconciled to a
  * shielded payment via a per-invoice memo/commitment.
  */

@@ -3,7 +3,7 @@
  * (contracts/merkle): same Poseidon2 compression, same zero table, so paths
  * computed here fold to exactly the on-chain roots.
  *
- * Incremental, stored-node design (the pattern every production mixer uses —
+ * Incremental, stored-node design (the pattern every production mixer uses -
  * Tornado/Railgun/NethermindEth's stellar-private-payments): each level keeps
  * its filled nodes, so `insert` updates only the O(levels) spine, `root` is
  * O(1), and `path` is O(levels). The previous version recomputed the whole

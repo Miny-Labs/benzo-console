@@ -1,5 +1,5 @@
 /**
- * KVStore — the minimal durable key/value port the client persists wallet state
+ * KVStore, the minimal durable key/value port the client persists wallet state
  * to (note-discovery snapshot, ASP allow-set, transaction journal). Structurally
  * compatible with `@benzo/platform`'s `KVStorage`, but declared here so core
  * never depends on the platform package (no dependency cycle).

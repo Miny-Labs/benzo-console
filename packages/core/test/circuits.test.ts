@@ -2,7 +2,7 @@
  * Circuit integration tests: build witnesses with the TS SDK and prove
  * through the REAL compiled circuits (snarkjs, headless). If any TS hash
  * mirror diverged from the circom templates by a byte, witness generation
- * would violate a constraint and proving would fail — so a green run here
+ * would violate a constraint and proving would fail, so a green run here
  * is the circuit<->SDK byte-identity proof. Local verification uses the
  * exported snarkjs verification keys.
  *
@@ -39,7 +39,7 @@ if (!HAVE_ARTIFACTS) {
   // Make the skip LOUD: a green run with these tests skipped does NOT mean the ZK
   // works. `pnpm test:zk` hard-fails on this via scripts/check-artifacts.mjs.
   console.warn(
-    "\n⚠️  ZK PROVING ARTIFACTS ABSENT — shield/joinsplit/unshield/sum proving tests are SKIPPED.\n" +
+    "\n⚠️  ZK PROVING ARTIFACTS ABSENT, shield/joinsplit/unshield/sum proving tests are SKIPPED.\n" +
       "    A passing run here does NOT exercise any real proof. Build them first:\n" +
       "      bash scripts/build-artifacts.sh   (compile from source)\n" +
       "      bash scripts/fetch-artifacts.sh   (download the exact deployed-matching artifacts)\n" +
@@ -108,7 +108,7 @@ describe.skipIf(!HAVE_ARTIFACTS)("shield circuit", () => {
 
   it("rejects a note bound to an UNREGISTERED MVK (the audit P0)", async () => {
     const w = buildShieldWitness();
-    // Bind the note to mvkPub 888 (with a matching tag) — but 888 is NOT in the
+    // Bind the note to mvkPub 888 (with a matching tag), but 888 is NOT in the
     // authorized-MVK registry, so registry membership fails. Pre-fix this would
     // have proven, yielding a permanently-unauditable note.
     const bad = { ...w, mvkPub: 888n, mvkTag: mvkTag(888n, w.blinding) };
@@ -206,7 +206,7 @@ describe.skipIf(!HAVE_ARTIFACTS)("joinsplit circuit", () => {
     const bad = {
       ...witness,
       outAmount: [witness.outAmount[0] + 1_000_000n, witness.outAmount[1]],
-      // recompute commitment so only the conservation constraint trips? No —
+      // recompute commitment so only the conservation constraint trips? No -
       // keep the declared commitment; either constraint failing is fine.
     };
     await expect(prove(art("joinsplit"), toWitnessInput(bad))).rejects.toThrow();
@@ -232,7 +232,7 @@ describe.skipIf(!HAVE_ARTIFACTS)("joinsplit circuit", () => {
 
   // Hardening (goal G): the 64-bit range check on INPUT amounts. This witness
   // is fully self-consistent (membership, nullifier, value-conservation, and
-  // both outputs in 64-bit range) and WOULD have proven before the check —
+  // both outputs in 64-bit range) and WOULD have proven before the check -
   // its only defect is an input amount of 2^64+10. It must now fail to prove.
   it("rejects an out-of-range INPUT amount (2^64+10) that conserves value", async () => {
     const tree = new MerkleTreeMirror(32);
@@ -342,7 +342,7 @@ describe.skipIf(!HAVE_ARTIFACTS)("unshield circuit", () => {
 
 describe.skipIf(!HAVE_ARTIFACTS)("proof_of_sum circuit (disclose-total)", () => {
   // Three real notes summing to 6,000,000, owned by one spend identity, plus a
-  // padding slot — the ZK replacement for the old plaintext decrypt-and-sum.
+  // padding slot, the ZK replacement for the old plaintext decrypt-and-sum.
   function fixture() {
     const tree = new MerkleTreeMirror(32);
     const kp = deriveKeypair(13579n);
@@ -384,7 +384,7 @@ describe.skipIf(!HAVE_ARTIFACTS)("proof_of_sum circuit (disclose-total)", () => 
     };
     const res = await prove(art("proof_of_sum"), toWitnessInput(witness));
     expect(res.sorobanPublics.length).toBe(4);
-    // public order: [root, claimedTotal, assetId, context] — only the total is revealed.
+    // public order: [root, claimedTotal, assetId, context], only the total is revealed.
     expect(BigInt(res.publicSignals[1])).toBe(6_000_000n);
     expect(await verifyLocal(vk("proof_of_sum"), res.publicSignals, res.proof)).toBe(true);
   }, 120_000);

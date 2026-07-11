@@ -22,6 +22,6 @@ export const initialProvingStatus: ProvingStatus = { phase: "idle", label: "Read
 export function provingStatusFromStage(stage: string): ProvingStatus {
   if (stage === "done") return { phase: "done", label: "Proof ready", raw: stage };
   if (stage === "proving") return { phase: "proving", label: "Generating proof on your device…", raw: stage };
-  // A forwarded internal info log — stay in "proving" but keep the detail.
+  // A forwarded internal info log, stay in "proving" but keep the detail.
   return { phase: "proving", label: "Generating proof on your device…", raw: stage };
 }

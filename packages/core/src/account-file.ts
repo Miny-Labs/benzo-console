@@ -90,7 +90,7 @@ export function loadAccount(
   let file: AccountFile;
   if ((parsed as EncryptedFile).benzoEncrypted === 1) {
     if (!passphrase) {
-      throw new Error("account file is encrypted — set BENZO_PASSPHRASE to unlock it");
+      throw new Error("account file is encrypted, set BENZO_PASSPHRASE to unlock it");
     }
     file = JSON.parse(decrypt(parsed as EncryptedFile, passphrase)) as AccountFile;
   } else {

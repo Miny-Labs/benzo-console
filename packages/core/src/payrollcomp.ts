@@ -2,8 +2,8 @@
  * Verifiable payroll computation (Z6).
  *
  * Proves the run total AND every per-line note commitment were CORRECTLY DERIVED
- * from the rate card — gross_i = rate_i * period_i - deductions_i, runTotal =
- * Σ gross_i — with the RATE CARD kept PRIVATE. The total is computed, not
+ * from the rate card, gross_i = rate_i * period_i - deductions_i, runTotal =
+ * Σ gross_i, with the RATE CARD kept PRIVATE. The total is computed, not
  * asserted: the chain accepts it only if it equals the sum of the hidden grosses.
  *
  * `commitDigest` = Poseidon2 binary fold over the per-line note commitments binds

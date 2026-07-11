@@ -1,5 +1,5 @@
 /**
- * Balance display for a private wallet — selectors over shielded + pending
+ * Balance display for a private wallet, selectors over shielded + pending
  * amounts with a one-switch privacy mask ("peek to reveal"). Pure; the screens
  * own the chrome, this owns the numbers and the masking rule.
  */

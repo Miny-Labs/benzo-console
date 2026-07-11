@@ -3,7 +3,7 @@ import { accountFromClaimSecret } from "./account.js";
 
 const secret = new Uint8Array(32).fill(7);
 
-describe("accountFromClaimSecret — app-scoped key domains", () => {
+describe("accountFromClaimSecret, app-scoped key domains", () => {
   it("is deterministic per (secret, app)", () => {
     const a = accountFromClaimSecret(secret, "consumer");
     const b = accountFromClaimSecret(secret, "consumer");

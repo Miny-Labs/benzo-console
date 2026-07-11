@@ -4,11 +4,11 @@
  * The CLI-backed StellarCli shells the `stellar` binary (impossible in a
  * browser). This adapter implements the same ChainClient interface using the
  * JSON-RPC server directly:
- *   - reads (`view`) run as a `simulateTransaction` — no signing, no fees, no
+ *   - reads (`view`) run as a `simulateTransaction`, no signing, no fees, no
  *     contract-spec fetch (the SDK's spec parser chokes on our >10-fn specs);
  *     contract args are coerced to ScVals from the same CLI-style string args
  *     core already builds.
- *   - writes (`invoke … send:true`) are DELEGATED to an injected submitter —
+ *   - writes (`invoke … send:true`) are DELEGATED to an injected submitter -
  *     in the wallet that's the self-hosted relayer/sponsor service, which pays
  *     the fee and submits via the proven Node path. The browser only ever hands
  *     over the proof + public inputs (never the witness), so privacy holds and
@@ -120,7 +120,7 @@ export class StellarRpcClient implements ChainClient {
     if (!opts.send) return this.simulate(opts.contractId, opts.source, opts.fnArgs);
     if (!this.opts.submitWrite) {
       throw new Error(
-        "StellarRpcClient: no write submitter configured — the browser submits writes via the relayer/sponsor service",
+        "StellarRpcClient: no write submitter configured, the browser submits writes via the relayer/sponsor service",
       );
     }
     return this.opts.submitWrite({
@@ -156,7 +156,7 @@ export class StellarRpcClient implements ChainClient {
         const sim = await this.server.simulateTransaction(tx);
         if (rpc.Api.isSimulationError(sim)) {
           // A simulation error is a real contract/account error, not a network
-          // hiccup — classify the common not-funded / missing-contract case so
+          // hiccup, classify the common not-funded / missing-contract case so
           // the caller gets an actionable message instead of a raw host trap.
           const hint = /account not found|MissingValue|no such|trustline/i.test(sim.error)
             ? " (is the source account funded, with a USDC trustline, on this network?)"

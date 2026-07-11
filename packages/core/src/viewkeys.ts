@@ -7,13 +7,13 @@
  *   HKDF-SHA256(MVK, "benzo/tvk" || scope). The MVK is not recoverable from
  *   any TVK, and TVKs for different scopes are non-correlatable.
  * - Note ciphertexts: X25519 ECDH + AES-256-GCM ("sealed box" style with an
- *   ephemeral sender key). The same plaintext is sealed twice — once to the
- *   recipient's note-discovery key, once to the controlling MVK epoch key —
+ *   ephemeral sender key). The same plaintext is sealed twice, once to the
+ *   recipient's note-discovery key, once to the controlling MVK epoch key -
  *   so the recipient can spend and a scoped auditor can passively decrypt.
  *
  * Viewing keys are decrypt-only. No spend authority is ever derivable here.
  *
- * Runtime: this module is browser-portable — it uses Web Crypto CSPRNG
+ * Runtime: this module is browser-portable, it uses Web Crypto CSPRNG
  * (`./crypto/random`), `@noble/ciphers` AES-256-GCM, and Uint8Array byte
  * helpers (`./crypto/bytes`) instead of `node:crypto`/`Buffer`. The on-wire
  * "BNZ1" box format is byte-identical to the previous node:crypto implementation
@@ -66,7 +66,7 @@ export interface SealedBox {
 
 // v1 discovery-box format: "BNZ1" (magic) || viewTag(1) || ephPub(32) || nonce(12) || ct.
 // The view tag lets a scanner skip the AES-GCM open for non-matching notes after
-// the (unavoidable) ECDH — a Zcash/Umbra-style fast path. Boxes without the magic
+// the (unavoidable) ECDH, a Zcash/Umbra-style fast path. Boxes without the magic
 // prefix are treated as legacy v0 (ephPub||nonce||ct) and always trial-decrypted,
 // so previously-emitted notes keep working unchanged.
 const MAGIC = Uint8Array.of(0x42, 0x4e, 0x5a, 0x31); // "BNZ1"
@@ -87,7 +87,7 @@ export function seal(plaintext: Uint8Array, recipientPub: Uint8Array): SealedBox
   const shared = x25519.getSharedSecret(ephSecret, recipientPub);
   const key = aeadKey(shared);
   const nonce = randomBytes(12);
-  // @noble/ciphers AES-256-GCM returns ciphertext || tag(16) — byte-identical to
+  // @noble/ciphers AES-256-GCM returns ciphertext || tag(16), byte-identical to
   // node's createCipheriv(update+final)+getAuthTag concatenation.
   const ct = gcm(key, nonce).encrypt(plaintext);
   const tag = Uint8Array.of(viewTag(shared));

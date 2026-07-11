@@ -1,5 +1,5 @@
 /**
- * Settings & team — the workspace control surface, organized into tabs: Team (members
+ * Settings & team, the workspace control surface, organized into tabs: Team (members
  * + roles + invites), Approval policy (require N approvals over $X), Recovery, Payees,
  * and Integrations. The heavy value-moving actions still live on their own screens.
  */
@@ -112,8 +112,8 @@ export function SettingsScreen() {
 }
 
 /**
- * Team — members (table), roles, and team invites. A team invite mints a console
- * seat; the raw claim URL is never shown — Copy link / Resend / Revoke instead.
+ * Team, members (table), roles, and team invites. A team invite mints a console
+ * seat; the raw claim URL is never shown, Copy link / Resend / Revoke instead.
  */
 function TeamCard() {
   const { members, session, loading } = useConsole();
@@ -240,7 +240,7 @@ function TeamCard() {
                   <Td className="text-muted">{m.email}</Td>
                   <Td><MetaPill>{m.role}</MetaPill></Td>
                   <Td><StatusPill status={m.status} /></Td>
-                  <Td align="right"><span className="text-muted">—</span></Td>
+                  <Td align="right"><span className="text-muted">-</span></Td>
                 </Tr>
               );
             })}
@@ -261,7 +261,7 @@ function TeamCard() {
                 <Button size="sm" variant="ghost" onClick={() => void copyLink(inv.link)} data-testid="team-invite-copy">
                   Copy link
                 </Button>
-                <Button size="sm" variant="ghost" onClick={() => void copyLink(inv.link, "Invite link copied — send it to your teammate")} data-testid="team-invite-resend">
+                <Button size="sm" variant="ghost" onClick={() => void copyLink(inv.link, "Invite link copied, send it to your teammate")} data-testid="team-invite-resend">
                   <RefreshCw size={13} /> Resend
                 </Button>
                 <button
@@ -300,7 +300,7 @@ function TeamCard() {
             ))}
           </Select>
           {formError ? <p className="text-[13px] font-medium text-danger" data-testid="team-invite-error">{formError}</p> : null}
-          <p className="text-[12px] text-muted">Team invites create a console seat. Share the link — they finish sign-in themselves.</p>
+          <p className="text-[12px] text-muted">Team invites create a console seat. Share the link, they finish sign-in themselves.</p>
         </div>
       </Modal>
 
@@ -326,7 +326,7 @@ function TeamCard() {
 }
 
 /**
- * Approval policy — "require N approvals over $X". When none is configured we show a
+ * Approval policy, "require N approvals over $X". When none is configured we show a
  * coherent empty state with Create (no dashboard contradiction); the editor persists
  * a real policy via updatePolicy (a freshly created default is session-local until a
  * backend create exists).
@@ -367,7 +367,7 @@ function ApprovalPolicyCard() {
       reApprovalTriggers: [],
       createdAt: new Date().toISOString(),
     });
-    toast({ title: "Default policy created — review and activate", tone: "success" });
+    toast({ title: "Default policy created, review and activate", tone: "success" });
   }
 
   async function save() {
@@ -382,7 +382,7 @@ function ApprovalPolicyCard() {
 
     // A freshly created default isn't in the store yet. Try to persist it; if this
     // build has no create/upsert path (updatePolicy rejects an unknown id), keep it
-    // for the session and say so honestly — never claim it's activated when it isn't.
+    // for the session and say so honestly, never claim it's activated when it isn't.
     if (!storePolicy && localPolicy) {
       const next = { ...localPolicy, conditions, steps, releaseGate };
       setBusy(true);
@@ -393,7 +393,7 @@ function ApprovalPolicyCard() {
         toast({ title: "Approval policy activated", tone: "success" });
       } catch {
         setLocalPolicy(next);
-        toast({ title: "Session-only default — not yet saved to your workspace.", tone: "warning" });
+        toast({ title: "Session-only default, not yet saved to your workspace.", tone: "warning" });
       } finally {
         setBusy(false);
       }
@@ -432,7 +432,7 @@ function ApprovalPolicyCard() {
         <>
           {!storePolicy ? (
             <div className="mx-5 mt-4 rounded-lg border border-warning/30 bg-warning/8 px-3.5 py-2.5 text-[12.5px] text-warning" data-testid="approval-policy-draft">
-              Default policy created — review the threshold and approvals below, then activate.
+              Default policy created, review the threshold and approvals below, then activate.
             </div>
           ) : null}
           <div className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-end">
@@ -456,7 +456,7 @@ function ApprovalPolicyCard() {
           <div className="mx-5 my-4 flex items-start gap-2 rounded-xl bg-primary/[0.06] px-3.5 py-3 text-[12.5px] text-fg" data-testid="approval-policy-enforcement">
             <ShieldCheck size={15} className="mt-0.5 flex-none text-primary" />
             <span>
-              <b>Enforced on-chain.</b> Org funds settle only with a valid in-circuit M-of-N proof — the verifier rejects a single-key spend, so release is gated by the contract, not just this server. A proposer can never approve their own payment.
+              <b>Enforced on-chain.</b> Org funds settle only with a valid in-circuit M-of-N proof, the verifier rejects a single-key spend, so release is gated by the contract, not just this server. A proposer can never approve their own payment.
             </span>
           </div>
           <div className="flex justify-end border-t border-border px-5 py-3">
@@ -501,7 +501,7 @@ function Stepper({ value, onDec, onInc, testid }: { value: number; onDec: () => 
   );
 }
 
-/** Account recovery — the workspace binding + next steps. */
+/** Account recovery, the workspace binding + next steps. */
 function RecoveryCard({ recovery }: { recovery: RecoveryStatus["recovery"] | null }) {
   return (
     <Card className="p-0" data-testid="account-recovery-card">
@@ -528,7 +528,7 @@ function RecoveryCard({ recovery }: { recovery: RecoveryStatus["recovery"] | nul
   );
 }
 
-/** Payees — vendors & contractors at a glance. */
+/** Payees, vendors & contractors at a glance. */
 function PayeesCard({ loading }: { loading: boolean }) {
   const { counterparties } = useConsole();
   return (
@@ -566,7 +566,7 @@ function PayeesCard({ loading }: { loading: boolean }) {
               <Tr key={c.id}>
                 <Td className="font-medium text-fg">{c.name}</Td>
                 <Td className="capitalize text-muted">{c.type}</Td>
-                <Td>{c.taxFormType && c.taxFormType !== "none" ? <MetaPill>{c.taxFormType}</MetaPill> : <span className="text-muted">—</span>}</Td>
+                <Td>{c.taxFormType && c.taxFormType !== "none" ? <MetaPill>{c.taxFormType}</MetaPill> : <span className="text-muted">-</span>}</Td>
                 <Td align="right"><StatusPill status={c.status} /></Td>
               </Tr>
             ))}
@@ -578,7 +578,7 @@ function PayeesCard({ loading }: { loading: boolean }) {
   );
 }
 
-/** Integrations — table with connected account, last sync, and actionable errors. */
+/** Integrations, table with connected account, last sync, and actionable errors. */
 function IntegrationsCard({ integrations }: { integrations: Integration[] | null }) {
   const toast = useToast();
   return (
@@ -611,7 +611,7 @@ function IntegrationsCard({ integrations }: { integrations: Integration[] | null
           </thead>
           <tbody>
             {integrations.map((it) => {
-              const account = it.externalRefs?.linkedAccount ?? it.externalRefs?.company ?? (it.status === "connected" ? "Connected" : "—");
+              const account = it.externalRefs?.linkedAccount ?? it.externalRefs?.company ?? (it.status === "connected" ? "Connected" : "-");
               return (
                 <Tr key={it.id}>
                   <Td className="font-medium text-fg">{PROVIDER_LABEL[it.provider] ?? it.provider}</Td>
@@ -625,15 +625,15 @@ function IntegrationsCard({ integrations }: { integrations: Integration[] | null
                   </Td>
                   <Td align="right">
                     {it.status === "error" ? (
-                      <Button size="sm" variant="outline" onClick={() => toast({ title: `${PROVIDER_LABEL[it.provider] ?? it.provider} reconnects through the API — not wired up in this build.`, tone: "muted" })}>
+                      <Button size="sm" variant="outline" onClick={() => toast({ title: `${PROVIDER_LABEL[it.provider] ?? it.provider} reconnects through the API, not wired up in this build.`, tone: "muted" })}>
                         <RefreshCw size={13} /> Reconnect
                       </Button>
                     ) : it.status === "disconnected" ? (
-                      <Button size="sm" variant="outline" onClick={() => toast({ title: `${PROVIDER_LABEL[it.provider] ?? it.provider} connects through the API — not wired up in this build.`, tone: "muted" })}>
+                      <Button size="sm" variant="outline" onClick={() => toast({ title: `${PROVIDER_LABEL[it.provider] ?? it.provider} connects through the API, not wired up in this build.`, tone: "muted" })}>
                         Connect
                       </Button>
                     ) : (
-                      <span className="text-muted">—</span>
+                      <span className="text-muted">-</span>
                     )}
                   </Td>
                 </Tr>
@@ -648,7 +648,7 @@ function IntegrationsCard({ integrations }: { integrations: Integration[] | null
 }
 
 /**
- * Roles — the per-role blurb list is the everyday read; the full roles × permissions
+ * Roles, the per-role blurb list is the everyday read; the full roles × permissions
  * matrix stays one click away behind "See full matrix".
  */
 function RolesCard() {
@@ -710,7 +710,7 @@ function RolesCard() {
         </div>
       ) : null}
       <div className="flex items-center gap-1.5 border-t border-border px-5 py-3 text-[12px] text-muted">
-        <ShieldCheck size={13} className="text-primary" /> Auditor is a scoped viewing-key holder — read-only, never a signer. A privacy-native role.
+        <ShieldCheck size={13} className="text-primary" /> Auditor is a scoped viewing-key holder, read-only, never a signer. A privacy-native role.
       </div>
     </Card>
   );

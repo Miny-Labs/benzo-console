@@ -1,15 +1,15 @@
 /**
- * Central copy constants — reusable privacy / disclosure wording so every screen
+ * Central copy constants, reusable privacy / disclosure wording so every screen
  * says the same thing the same way. Business language first; cryptographic detail
  * only where it earns its place. Screens adopt these in later waves; exported now so
  * the vocabulary is fixed before the rewrites start.
  *
  * Rule of thumb:
- *  - PRIVACY.privateOnChain — the amount AND recipient are not publicly visible.
- *  - PRIVACY.visibleToWorkspace — authorized teammates can see it in this console.
- *  - PRIVACY.hiddenDueToRole — you personally can't see it (your role, not a failure).
- *  - PRIVACY.disclosedThroughProof — revealed deliberately, backed by an on-chain proof.
- *  - PRIVACY.hideBalances — the screen-level mask toggle label.
+ *  - PRIVACY.privateOnChain, the amount AND recipient are not publicly visible.
+ *  - PRIVACY.visibleToWorkspace, authorized teammates can see it in this console.
+ *  - PRIVACY.hiddenDueToRole, you personally can't see it (your role, not a failure).
+ *  - PRIVACY.disclosedThroughProof, revealed deliberately, backed by an on-chain proof.
+ *  - PRIVACY.hideBalances, the screen-level mask toggle label.
  */
 export const PRIVACY = {
   /** Amount + recipient are not publicly visible on-chain. */

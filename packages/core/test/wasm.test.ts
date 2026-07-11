@@ -1,5 +1,5 @@
 /**
- * WasmProver test — the on-device proving backend. Proves from preloaded
+ * WasmProver test, the on-device proving backend. Proves from preloaded
  * Uint8Array artifacts (as the browser would, having fetched the wasm/zkey once)
  * rather than fs paths, confirming the proof is byte-valid and the witness never
  * needs a filesystem. Self-skips when the gitignored artifacts are absent.

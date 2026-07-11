@@ -65,10 +65,10 @@ function toDate(ts: number | string | Date): Date | null {
 }
 
 /**
- * Date-only display: "22 Jul 2026" — NO time component. Formatted from the value's
+ * Date-only display: "22 Jul 2026", NO time component. Formatted from the value's
  * UTC calendar day so a date-only value (a due date / expiry stored as midnight UTC)
  * can never leak a spurious local time (the "05:30" IST artifact) or shift a day
- * across timezones. Use this for due dates, expiries, period labels — anything that
+ * across timezones. Use this for due dates, expiries, period labels, anything that
  * is conceptually a day, not an instant.
  */
 export function fmtDate(ts: number | string | Date): string {
@@ -79,7 +79,7 @@ export function fmtDate(ts: number | string | Date): string {
 
 /**
  * Full timestamp display (local): date + time, for genuine instants (posted-at,
- * settled-at). Use this ONLY when the time actually matters — otherwise use fmtDate.
+ * settled-at). Use this ONLY when the time actually matters, otherwise use fmtDate.
  */
 export function fmtDateTime(ts: number | string | Date): string {
   const d = toDate(ts);
@@ -93,7 +93,7 @@ export function formatDate(ts: number | string | Date): string {
 }
 
 /**
- * Person initials for avatars — the ONE shared source so the top-bar avatar and the
+ * Person initials for avatars, the ONE shared source so the top-bar avatar and the
  * Settings/team rows never disagree (the "JE vs JO" bug). Two words → first letter of
  * first + last ("John Everett" → "JE"); one word / an email → first two chars
  * ("jordan@acme.co" → "JO"). Always uppercase.

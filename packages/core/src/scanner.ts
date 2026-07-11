@@ -1,5 +1,5 @@
 /**
- * On-chain note discovery — the scanning core shared by the SDK facade and the
+ * On-chain note discovery, the scanning core shared by the SDK facade and the
  * standalone @benzo/indexer service.
  *
  * Reads the pool's `new_commitment_event` / `new_nullifier_event` and the
@@ -283,7 +283,7 @@ export class NoteScanner {
    * orgRecipientPk) that the org's viewing key can decrypt and that are not yet
    * spent via the org nullifier (keyed by akGroup + blinding, not a single
    * spendSk). This is how the console rediscovers its dual-controlled treasury
-   * from chain — no backend storage; the org MVK + akGroup are sufficient.
+   * from chain, no backend storage; the org MVK + akGroup are sufficient.
    */
   orgSpendable(
     viewingSecret: Uint8Array,
@@ -352,14 +352,14 @@ async function getEventsRpc(
         });
         if (res.status >= 500 || res.status === 429) {
           lastErr = new Error(`getEvents HTTP ${res.status}`);
-          continue; // transient — retry
+          continue; // transient, retry
         }
         return (await res.json()) as { result?: EventsPage; error?: { message: string } };
       } finally {
         clearTimeout(timer);
       }
     } catch (e) {
-      lastErr = e; // network/timeout — retry
+      lastErr = e; // network/timeout, retry
     }
   }
   throw new Error(`getEvents failed after retries: ${String(lastErr)}`);
@@ -377,7 +377,7 @@ export async function collectEvents(
   let json = await post({ startLedger, filters, pagination: { limit: 10000 } });
   // If startLedger has aged out of the retention window, RPC returns a range
   // error naming the oldest retained ledger; restart from there (explicit, not
-  // silent — a durable store keeps anything that aged out from a prior sync).
+  // silent, a durable store keeps anything that aged out from a prior sync).
   for (let attempt = 0; attempt < 6 && json.error; attempt++) {
     const m = /(\d+)\s*-\s*(\d+)/.exec(json.error.message);
     if (!m) break;
@@ -447,7 +447,7 @@ export async function fetchAspLeaves(
  * `startLedger`) into `prior` ordered leaves, returning the merged ordered
  * list plus the highest ledger seen (the resume cursor). The allow-set is
  * append-only and index-addressed, so a durable caller persists `{leaves,
- * cursor}` and resumes from `cursor + 1` — never re-fetching the whole set.
+ * cursor}` and resumes from `cursor + 1`, never re-fetching the whole set.
  */
 export async function fetchAspLeavesSince(
   rpcUrl: string,
@@ -839,7 +839,7 @@ export async function fetchPoolWitnessFromStorageWithKnownSuffix(
 
 /**
  * Reconstruct the ordered authorized-MVK registry leaves from on-chain
- * `MvkRegistered` events — the raw leaf values, indexed by the event's `index`,
+ * `MvkRegistered` events, the raw leaf values, indexed by the event's `index`,
  * so `MvkRegistryMirror.syncLeaves(...)` can resume a registry that already
  * holds entries (e.g. a second e2e flow appending to the same deployment).
  */

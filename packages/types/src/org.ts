@@ -21,7 +21,7 @@ export interface OrgSummary {
   baseAssetCode?: string;
 }
 
-/** A business tenant — the top-level account everything hangs off. */
+/** A business tenant, the top-level account everything hangs off. */
 export interface Org {
   id: OrgId;
   name: string;
@@ -112,7 +112,7 @@ export interface Member {
   name?: string;
   role: Role;
   status: MemberStatus;
-  /** member's MVK public scalar (hex) — lets them decode in-scope notes */
+  /** member's MVK public scalar (hex), lets them decode in-scope notes */
   mvkPublic?: string;
   /** signer EVM address for SIWE authorization (treasurer/approver) */
   signerAddress?: EvmAddress;

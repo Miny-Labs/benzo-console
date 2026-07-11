@@ -3,7 +3,7 @@
  * machine (payment-state.ts). The animation is a SLAVE to the machine, never a
  * timer: phase 1 ("encrypt") holds through building+proving, phase 2 ("settle")
  * through submitting, phase 3 ("verify") on confirmed. This is the line between a
- * credible ZK demo and a progress-bar lie — so the mapping lives here, tested,
+ * credible ZK demo and a progress-bar lie, so the mapping lives here, tested,
  * and both apps render it (warm coin-ceremony in the wallet, condensed strip in
  * the console).
  *
@@ -34,9 +34,9 @@ export interface CeremonyView {
   floorMs: number;
   /** whether to play motion (false under prefers-reduced-motion) */
   animate: boolean;
-  /** settled — render the verifiable receipt */
+  /** settled, render the verifiable receipt */
   done: boolean;
-  /** failed — render the error state */
+  /** failed, render the error state */
   failed: boolean;
 }
 

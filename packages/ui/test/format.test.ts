@@ -1,5 +1,5 @@
 /**
- * format.ts — money parse/format round-trips and identifier truncation. The
+ * format.ts, money parse/format round-trips and identifier truncation. The
  * parse path must refuse to silently drop a user's cents (over-precision throws).
  */
 import { describe, it, expect } from "vitest";

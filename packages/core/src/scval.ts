@@ -6,8 +6,8 @@
  * SDK's spec parser chokes on our >10-fn specs).
  *
  * Two entry points share one table:
- *   - `scvalForArg`      — the read surface (no proof struct; reads never carry one).
- *   - `scvalForWriteArg` — the read surface PLUS the Groth16 `--proof` struct,
+ *   - `scvalForArg`     , the read surface (no proof struct; reads never carry one).
+ *   - `scvalForWriteArg`, the read surface PLUS the Groth16 `--proof` struct,
  *                          so a browser can build+sign a write client-side
  *                          instead of handing it to a custodial relayer.
  */
@@ -26,7 +26,7 @@ function fixedBytes32(value: string): Uint8Array {
 /** Coerce a single CLI read arg (`name`, `value`) to its ScVal by name. */
 export function scvalForArg(name: string, value: string): xdr.ScVal {
   // VK identifier (e.g. "BALANCE"/"SHIELD") is an on-chain `Symbol`, NOT a
-  // string — a String-for-Symbol arg traps the contract (UnreachableCodeReached).
+  // string, a String-for-Symbol arg traps the contract (UnreachableCodeReached).
   if (name === "vk_id") return nativeToScVal(value, { type: "symbol" });
   // Groth16 public inputs: a Vec<Bn254Fr> (encoded on-chain as Vec<U256>). Each
   // field element is a 254-bit scalar (decimal string) → U256, matching how the
@@ -80,7 +80,7 @@ export function scvalForArg(name: string, value: string): xdr.ScVal {
 
 /**
  * The on-chain `Groth16Proof` is `{ a, b, c }` where `a`/`c` are 64-byte G1 and
- * `b` is a 128-byte G2 point — SDK-native `Bn254G1Affine`/`Bn254G2Affine`, each
+ * `b` is a 128-byte G2 point, SDK-native `Bn254G1Affine`/`Bn254G2Affine`, each
  * wire-encoded as fixed-length `Bytes`. `proofToSoroban` already produced the
  * hex; here we lift `{a,b,c}` hex into the struct ScVal. (Field order a<b<c is
  * already the sorted ScMap order Soroban requires.)
@@ -101,7 +101,7 @@ export function proofToScVal(json: string): xdr.ScVal {
   return xdr.ScVal.scvMap([field("a", p.a), field("b", p.b), field("c", p.c)]);
 }
 
-/** Coerce a single CLI WRITE arg — the read table plus the `--proof` struct. */
+/** Coerce a single CLI WRITE arg, the read table plus the `--proof` struct. */
 export function scvalForWriteArg(name: string, value: string): xdr.ScVal {
   if (name === "proof") return proofToScVal(value);
   return scvalForArg(name, value);

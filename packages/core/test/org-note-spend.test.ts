@@ -1,5 +1,5 @@
 /**
- * Org-NOTE spend authorization (in-circuit M-of-N merge — stage 1+2 core).
+ * Org-NOTE spend authorization (in-circuit M-of-N merge, stage 1+2 core).
  *
  * org_note_spend now proves all three legs the merged joinsplit needs:
  *  (A) M-of-N: >=threshold DISTINCT members EdDSA-signed this transfer's spendMessage.
@@ -33,7 +33,7 @@ const HAVE = existsSync(wasm);
 const HAVE_ZKEY = existsSync(zkeyPath);
 const LEVELS = 16;
 const MAX = 3;
-// Capacity-slot domains — must match note.circom.
+// Capacity-slot domains, must match note.circom.
 const KEYPAIR_DOMAIN = 0x03n;
 const NULLIFIER_DOMAIN = 0x02n;
 const NK_DOMAIN = 0x07n;

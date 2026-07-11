@@ -1,5 +1,5 @@
 /**
- * Non-custodial signing (B.5) — headless coverage of the custody-seam removal,
+ * Non-custodial signing (B.5), headless coverage of the custody-seam removal,
  * no live chain:
  *   - LocalKeypairSigner actually signs the tx (signature verifies against the
  *     tx hash with the signer's public key, and only that key's sig is added).

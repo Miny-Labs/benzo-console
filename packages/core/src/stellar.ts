@@ -1,5 +1,5 @@
 /**
- * Stellar client — wraps the `stellar` CLI for deploys/invokes (so every
+ * Stellar client, wraps the `stellar` CLI for deploys/invokes (so every
  * transaction is reproducible from a shell) and the Soroban JSON-RPC for
  * reads (events, ledger entries).
  */
@@ -81,7 +81,7 @@ export class StellarCli implements ChainClient {
 
   /**
    * Run a READ-ONLY command with bounded exponential-backoff retry on transient
-   * failures. Only safe for idempotent reads (view/keys) — never for submits,
+   * failures. Only safe for idempotent reads (view/keys), never for submits,
    * which could double-execute.
    */
   private async runRead(
@@ -194,7 +194,7 @@ export class StellarCli implements ChainClient {
         return body.result as T;
       } catch (e) {
         lastErr = e;
-        // RPC-level errors (body.error) are non-transient — rethrow immediately.
+        // RPC-level errors (body.error) are non-transient, rethrow immediately.
         if (e instanceof Error && e.message.startsWith(`rpc ${method}:`) && !/HTTP 5|HTTP 429/.test(e.message)) throw e;
       } finally {
         clearTimeout(timer);

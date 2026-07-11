@@ -1,10 +1,10 @@
 /**
- * Audit log — the tamper-evident double-entry ledger on screen. Every shielded
+ * Audit log, the tamper-evident double-entry ledger on screen. Every shielded
  * movement projects to a balanced entry whose hash commits to the one before it, so
  * any after-the-fact edit/insert/delete breaks the chain. A dense, filterable table
  * (search, date range, event, account, status, export) with a per-row detail drawer.
  * "Generate auditor packet" re-walks the chain, folds every encrypted event under one
- * Merkle root, and anchors it on-chain — one full-screen, re-verifiable disclosure.
+ * Merkle root, and anchors it on-chain, one full-screen, re-verifiable disclosure.
  */
 import { useEffect, useMemo, useReducer, useState } from "react";
 import { CheckCircle2, Download, ExternalLink, ScrollText, Search, ShieldAlert, X } from "lucide-react";
@@ -35,7 +35,7 @@ const ALL_EVENTS = Object.keys(EVENT_LABEL) as LedgerSourceType[];
 
 // `finalityOf` only ever yields confirmed / pending / reversed for a ledger entry
 // (there's no failure signal on the model), so "failed" was unreachable everywhere
-// it appeared — the pill branch and the status-filter option both included a state
+// it appeared, the pill branch and the status-filter option both included a state
 // no row could ever have. Dropped it until the ledger actually surfaces failures.
 type Finality = "confirmed" | "pending" | "reversed";
 const FINALITY_LABEL: Record<Finality, string> = { confirmed: "Confirmed", pending: "Pending", reversed: "Reversed" };
@@ -45,7 +45,7 @@ const FINALITY_LABEL: Record<Finality, string> = { confirmed: "Confirmed", pendi
 const PACKET_TITLES: CeremonyTitles = {
   encrypt: { title: "Re-walking the audit chain", sub: "Re-hashing every entry and gathering the encrypted events" },
   settle: { title: "Folding the audit proof", sub: "Committing the Merkle root and anchoring it on-chain" },
-  verify: { title: "Anchored on-chain — Merkle root revealed", sub: "Here's your downloadable, re-verifiable packet" },
+  verify: { title: "Anchored on-chain, Merkle root revealed", sub: "Here's your downloadable, re-verifiable packet" },
   error: { title: "Couldn't seal the packet" },
 };
 
@@ -59,10 +59,10 @@ function accountFor(e: LedgerEntry): string {
   return e.lines.find((l) => l.direction === "credit")?.accountId ?? e.lines[0]?.accountId ?? "";
 }
 
-/** "acct_operating" -> "Operating" — a friendly bucket label, no store needed. */
+/** "acct_operating" -> "Operating", a friendly bucket label, no store needed. */
 function accountLabel(id: string): string {
   const base = id.replace(/^acct_/, "").replace(/_/g, " ");
-  return base ? base.charAt(0).toUpperCase() + base.slice(1) : "—";
+  return base ? base.charAt(0).toUpperCase() + base.slice(1) : "-";
 }
 
 /** Settlement finality of an entry. */
@@ -130,7 +130,7 @@ export function AuditLog() {
       if (eventType !== "all" && e.sourceType !== eventType) return false;
       if (statusFilter !== "all" && finalityOf(e) !== statusFilter) return false;
       if (accountFilter !== "all" && !e.lines.some((l) => l.accountId === accountFilter)) return false;
-      // Both bounds parsed as LOCAL start/end-of-day — bare `new Date("2026-07-10")`
+      // Both bounds parsed as LOCAL start/end-of-day, bare `new Date("2026-07-10")`
       // is UTC midnight, which would slice the day off by the viewer's tz offset.
       if (dateFrom && new Date(e.postedAt) < new Date(`${dateFrom}T00:00:00`)) return false;
       if (dateTo && new Date(e.postedAt) > new Date(`${dateTo}T23:59:59`)) return false;
@@ -146,7 +146,7 @@ export function AuditLog() {
   const pageClamped = Math.min(page, totalPages - 1);
   const pageRows = filtered.slice(pageClamped * PAGE_SIZE, pageClamped * PAGE_SIZE + PAGE_SIZE);
   useEffect(() => setPage(0), [search, eventType, statusFilter, accountFilter, dateFrom, dateTo]);
-  // Escape closes the detail drawer — the dialog affordance keyboard users expect.
+  // Escape closes the detail drawer, the dialog affordance keyboard users expect.
   useEffect(() => {
     if (!detail) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDetail(null);
@@ -361,7 +361,7 @@ export function AuditLog() {
                   key={e.id}
                   role="button"
                   tabIndex={0}
-                  aria-label={`${EVENT_LABEL[e.sourceType]} — open details`}
+                  aria-label={`${EVENT_LABEL[e.sourceType]}, open details`}
                   onClick={() => setDetail(e)}
                   onKeyDown={(ev) => {
                     if (ev.key === "Enter" || ev.key === " ") {
@@ -380,7 +380,7 @@ export function AuditLog() {
                         <CopyButton value={e.hash} />
                       </span>
                     ) : (
-                      <span className="text-muted">—</span>
+                      <span className="text-muted">-</span>
                     )}
                   </Td>
                   <Td className="!py-4">{accountLabel(accountFor(e))}</Td>
@@ -398,7 +398,7 @@ export function AuditLog() {
                         Receipt <ExternalLink size={12} />
                       </a>
                     ) : (
-                      <span className="text-muted">—</span>
+                      <span className="text-muted">-</span>
                     )}
                   </Td>
                 </Tr>
@@ -468,7 +468,7 @@ export function AuditLog() {
                       <span className="flex-none"><CopyButton value={detail.hash} /></span>
                     </div>
                   ) : (
-                    <span className="text-muted">—</span>
+                    <span className="text-muted">-</span>
                   )}
                 </div>
 

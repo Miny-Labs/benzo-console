@@ -39,7 +39,7 @@ export type PaymentStatus =
   | "cancelled"
   | "expired";
 
-/** Valid transitions — the BFF enforces these; the UI reflects them. */
+/** Valid transitions, the BFF enforces these; the UI reflects them. */
 export const PAYMENT_TRANSITIONS: Record<PaymentStatus, readonly PaymentStatus[]> = {
   created: ["needs_approval", "approved", "cancelled"],
   needs_approval: ["approved", "cancelled", "expired"],
@@ -64,7 +64,7 @@ export const TERMINAL_PAYMENT_STATUSES: readonly PaymentStatus[] = [
   "expired",
 ];
 
-/** What a given payment reveals vs hides — surfaced at the confirm step. */
+/** What a given payment reveals vs hides, surfaced at the confirm step. */
 export interface PrivacyDisclosure {
   amountHidden: boolean;
   counterpartyHidden: boolean;

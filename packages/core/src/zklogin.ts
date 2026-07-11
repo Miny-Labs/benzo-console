@@ -1,5 +1,5 @@
 /**
- * zkLogin for Benzo — the Sui-zkLogin / Aptos-Keyless model, adapted to Stellar.
+ * zkLogin for Benzo, the Sui-zkLogin / Aptos-Keyless model, adapted to Stellar.
  *
  * HOW THE OTHER CHAINS DO IT (Sui zkLogin, Aptos Keyless):
  *   1. the wallet makes an ephemeral key pair and embeds nonce = H(eph_pk,
@@ -8,7 +8,7 @@
  *      sub, nonce, ...};
  *   3. a Groth16/BN254 proof proves, in zero knowledge: the JWT's RSA signature
  *      verifies against the provider's JWK, the nonce commits to eph_pk, and the
- *      account address = H(sub, aud, iss, salt) — without revealing the JWT/sub;
+ *      account address = H(sub, aud, iss, salt), without revealing the JWT/sub;
  *   4. the chain verifies that proof against the provider's published JWKs.
  *   The address is H(sub, aud, iss, salt) so it is STABLE per user yet UNLINKABLE
  *   to the Google identity (salt hides sub). Salt "option 4" = HKDF(seed, iss|aud, sub).
@@ -23,7 +23,7 @@
  *     OFF-CHAIN (the BFF), so the chain trusts the BFF for the JWT step.
  *   - Phase 2: move the JWT RSA verification IN-CIRCUIT (the heavy ~2^20
  *     ptau circuit) so the chain verifies the proof against Google's JWKs
- *     directly — fully trustless, no BFF trust. The verifier needs no change
+ *     directly, fully trustless, no BFF trust. The verifier needs no change
  *     (it already verifies Groth16/BN254).
  *
  * This module is the Phase-1 derivation: pure, browser-safe, deterministic.
@@ -42,7 +42,7 @@ const enc = (s: string) => new TextEncoder().encode(s);
 const feFromBytes = (b: Uint8Array): bigint => BigInt("0x" + toHex(b)) % FIELD_MODULUS;
 
 /**
- * The OIDC nonce binding — commits the ephemeral pubkey + session expiry into the
+ * The OIDC nonce binding, commits the ephemeral pubkey + session expiry into the
  * OAuth request, exactly like Sui zkLogin (`nonce = H(eph_pk, max_epoch,
  * randomness)`). The app passes this as the `nonce` in the Google OAuth request;
  * a Phase-2 in-circuit proof checks the JWT's `nonce` equals this, binding the
@@ -72,7 +72,7 @@ export function oidcClaimSecret(id: OidcIdentity, salt: Uint8Array | string = "b
 }
 
 /**
- * Derive a full Benzo account (spend + viewing keys) from VERIFIED OIDC claims —
+ * Derive a full Benzo account (spend + viewing keys) from VERIFIED OIDC claims -
  * Phase-1 zkLogin. The caller MUST have verified the JWT signature first (the BFF
  * does this against Google's JWKs); this only does the deterministic key
  * derivation. Same model as `accountFromClaimSecret`, keyed by the OIDC identity.

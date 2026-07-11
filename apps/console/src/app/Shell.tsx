@@ -157,7 +157,7 @@ export function Shell() {
             <div className="relative flex-none">
               <button
                 onClick={() => setMenu((m) => (m === "bell" ? null : "bell"))}
-                aria-label={pending ? `Notifications — ${pending} awaiting approval` : "Notifications"}
+                aria-label={pending ? `Notifications, ${pending} awaiting approval` : "Notifications"}
                 title={pending ? `${pending} awaiting approval` : "Notifications"}
                 aria-haspopup="menu"
                 aria-expanded={menu === "bell"}
