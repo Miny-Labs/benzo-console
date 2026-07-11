@@ -26,7 +26,7 @@ import { CommandBar } from "./CommandBar";
 import { AvalancheMark, Logo } from "../ui/Logo";
 import { NetworkMenu } from "./NetworkMenu";
 import { useConsole } from "../lib/store";
-import { initials } from "../lib/format";
+import { formatAddress } from "../lib/format";
 import { Dashboard } from "../screens/Dashboard";
 import { Approvals } from "../screens/Approvals";
 import { Contractors } from "../screens/Contractors";
@@ -68,7 +68,10 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 export function Shell() {
   const loc = useLocation();
   const nav = useNavigate();
-  const { session, liveStatus, dashboard, payments, masked, toggleMasked } = useConsole();
+  const { session, liveStatus, dashboard, payments, masked, toggleMasked, setActiveOrg } = useConsole();
+  const activeOrg = session?.activeOrg ?? null;
+  const orgName = activeOrg?.name ?? "Workspace";
+  const signedInAs = session?.user.address ? formatAddress(session.user.address, 6, 4) : "Signed in";
   const pending = dashboard?.pendingApprovals ?? payments.filter((p) => p.status === "needs_approval").length;
   const live = liveStatus?.live ?? dashboard?.live ?? false;
   // Top-bar popovers (workspace switcher + notifications).
@@ -84,8 +87,7 @@ export function Shell() {
   }, [menu]);
   // Close any open popover on route change.
   useEffect(() => setMenu(null), [loc.pathname]);
-  // Shared initials helper so the top-bar avatar and Settings/team never disagree.
-  const avatarInitials = initials(session?.member.name, "JD");
+  const avatarInitials = session?.user.address ? session.user.address.slice(2, 4).toUpperCase() : "BZ";
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[var(--color-canvas-outer)] p-0 sm:p-6">
@@ -107,9 +109,9 @@ export function Shell() {
                 className="flex items-center gap-2 rounded-lg px-1.5 py-1 text-sm font-semibold outline-none transition hover:bg-[#f4f3ef] focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 <span className="flex h-[22px] w-[22px] items-center justify-center rounded-md bg-[#e7e0fb] text-[12px] font-bold text-[#4a2fa0]">
-                  {(session?.org.name ?? "A")[0]}
+                  {orgName[0]}
                 </span>
-                <span className="max-w-[160px] truncate">{session?.org.name ?? "Workspace"}</span>
+                <span className="max-w-[160px] truncate">{orgName}</span>
                 <ChevronDown size={15} className={`text-[#a3a7ac] transition ${menu === "workspace" ? "rotate-180" : ""}`} />
               </button>
               <AnimatePresence>
@@ -125,19 +127,36 @@ export function Shell() {
                   >
                     <div className="flex items-center gap-2.5 border-b border-border px-3.5 py-3">
                       <span className="flex h-8 w-8 flex-none items-center justify-center rounded-md bg-[#e7e0fb] text-[13px] font-bold text-[#4a2fa0]">
-                        {(session?.org.name ?? "A")[0]}
+                        {orgName[0]}
                       </span>
                       <div className="min-w-0">
-                        <div className="truncate text-[13.5px] font-semibold text-ink">{session?.org.name ?? "Workspace"}</div>
-                        <div className="truncate text-[12px] text-muted">{session?.member.name ?? "Signed in"}</div>
+                        <div className="truncate text-[13.5px] font-semibold text-ink">{orgName}</div>
+                        <div className="truncate text-[12px] text-muted">{signedInAs}</div>
                       </div>
                     </div>
+                    {session?.orgs.length ? (
+                      <div className="py-1">
+                        {session.orgs.map((org) => (
+                          <button
+                            key={org.id}
+                            role="menuitem"
+                            onClick={() => {
+                              setActiveOrg(org.id);
+                              setMenu(null);
+                            }}
+                            className={`flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left text-[13px] outline-none transition hover:bg-[#f4f3ef] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40 ${activeOrg?.id === org.id ? "font-semibold text-primary" : "text-[#3a4452]"}`}
+                          >
+                            <span className="min-w-0 truncate">{org.name}</span>
+                            <span className="flex-none text-[11px] font-medium text-muted">{org.role}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="px-3.5 py-2.5 text-[12px] text-muted">No workspaces yet.</div>
+                    )}
                     <button role="menuitem" onClick={() => { setMenu(null); nav("/settings"); }} className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] text-[#3a4452] outline-none transition hover:bg-[#f4f3ef] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40">
                       <Settings size={15} className="text-[#8a9099]" /> Settings &amp; team
                     </button>
-                    <div className="border-t border-border px-3.5 py-2.5 text-[11.5px] text-muted">
-                      Adding more workspaces is coming soon.
-                    </div>
                   </motion.div>
                 ) : null}
               </AnimatePresence>
@@ -216,23 +235,44 @@ export function Shell() {
 
           <div className="relative flex flex-1 flex-col overflow-hidden">
             <main className="no-scrollbar relative z-10 h-full overflow-y-auto px-5 py-6">
-              <Routes location={loc} key={loc.pathname}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/approvals" element={<Approvals />} />
-                <Route path="/contractors" element={<Contractors />} />
-                <Route path="/payroll" element={<Payroll />} />
-                <Route path="/invoices" element={<Invoices />} />
-                <Route path="/pay" element={<Pay />} />
-                <Route path="/treasury" element={<Treasury />} />
-                <Route path="/grants" element={<Grants />} />
-                <Route path="/audit" element={<AuditLog />} />
-                <Route path="/claim" element={<InviteClaim />} />
-                <Route path="/settings" element={<SettingsScreen />} />
-                <Route path="*" element={<Dashboard />} />
-              </Routes>
+              {activeOrg ? (
+                <Routes location={loc} key={loc.pathname}>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/approvals" element={<Approvals />} />
+                  <Route path="/contractors" element={<Contractors />} />
+                  <Route path="/payroll" element={<Payroll />} />
+                  <Route path="/invoices" element={<Invoices />} />
+                  <Route path="/pay" element={<Pay />} />
+                  <Route path="/treasury" element={<Treasury />} />
+                  <Route path="/grants" element={<Grants />} />
+                  <Route path="/audit" element={<AuditLog />} />
+                  <Route path="/claim" element={<InviteClaim />} />
+                  <Route path="/settings" element={<SettingsScreen />} />
+                  <Route path="*" element={<Dashboard />} />
+                </Routes>
+              ) : (
+                <NoOrgPlaceholder address={session?.user.address} />
+              )}
             </main>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function NoOrgPlaceholder({ address }: { address?: string }) {
+  return (
+    <div className="flex min-h-full items-center justify-center px-6 py-12">
+      <div className="max-w-md text-center">
+        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Users size={20} />
+        </div>
+        <h1 className="mt-4 font-display text-2xl text-ink">Create your org</h1>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          {address ? `${formatAddress(address, 6, 4)} is signed in, but it is not attached to a workspace yet.` : "You are signed in, but you are not attached to a workspace yet."}
+        </p>
+        <p className="mt-1 text-sm leading-6 text-muted">Org creation is coming in the next setup pass.</p>
       </div>
     </div>
   );

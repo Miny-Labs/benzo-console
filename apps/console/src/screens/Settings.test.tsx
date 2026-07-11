@@ -8,8 +8,13 @@ const refreshMock = vi.hoisted(() => vi.fn(async () => true));
 // treasurer over $5,000) so the simplified policy control has something to edit.
 const stateRef = vi.hoisted(() => ({
   current: {
-    session: { org: { name: "Acme", legalName: "Acme Inc.", country: "US", kybStatus: "verified" }, member: { name: "Jane Doe" } },
-    members: [{ id: "mem_1", name: "Jane Doe", email: "jane@acme.com", role: "owner", status: "active" }],
+    session: {
+      user: { id: "usr_1", address: "0x1234567890abcdef1234567890abcdef12345678", roles: ["owner"] },
+      orgs: [{ id: "org_1", name: "Acme", slug: "acme", role: "owner", legalName: "Acme Inc.", country: "US", kybStatus: "approved", createdAt: "2026-06-26T00:00:00.000Z" }],
+      activeOrg: { id: "org_1", name: "Acme", slug: "acme", role: "owner", legalName: "Acme Inc.", country: "US", kybStatus: "approved", createdAt: "2026-06-26T00:00:00.000Z" },
+      role: "owner",
+    },
+    members: [{ id: "mem_1", name: "Jane Doe", email: "jane@acme.com", role: "owner", status: "active", signerAddress: "0x1234567890abcdef1234567890abcdef12345678" }],
     counterparties: [],
     policies: [
       {

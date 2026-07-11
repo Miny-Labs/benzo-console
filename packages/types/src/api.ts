@@ -11,17 +11,26 @@ import type { Money, Timestamp } from "./common.js";
 import type { Integration, IntegrationProvider } from "./integrations.js";
 import type { Invoice, LineItem } from "./invoices.js";
 import type { LedgerEntry } from "./ledger.js";
-import type { Member, Org, Role } from "./org.js";
+import type { Member, OrgRole, OrgSummary, Role } from "./org.js";
 import type { PaymentOrder, PaymentType } from "./payments.js";
 import type { PayrollBatch, PayrollSource } from "./payroll.js";
 
 // ---- auth / session -------------------------------------------------------
 
-export interface AuthSession {
-  member: Member;
-  org: Org;
-  permissions: string[];
+export interface AppUser {
+  id: string;
+  address: string;
+  roles: string[];
 }
+
+export interface AppSession {
+  user: AppUser;
+  orgs: OrgSummary[];
+  activeOrg: OrgSummary | null;
+  role: OrgRole | null;
+}
+
+export type AuthSession = AppSession;
 
 // ---- dashboard / treasury (read-optimized projections) --------------------
 
@@ -170,7 +179,12 @@ export interface Endpoint {
 
 /** The canonical REST surface. `:id` segments are path params. */
 export const ENDPOINTS = {
-  session: { method: "GET", path: "/api/session" },
+  authNonce: { method: "GET", path: "/api/auth/nonce" },
+  authVerify: { method: "POST", path: "/api/auth/verify" },
+  session: { method: "GET", path: "/api/auth/me" },
+  authLogout: { method: "POST", path: "/api/auth/logout" },
+  orgs: { method: "GET", path: "/api/orgs" },
+  org: { method: "GET", path: "/api/orgs/:id" },
   dashboard: { method: "GET", path: "/api/dashboard" },
   treasury: { method: "GET", path: "/api/treasury" },
   proveBalance: { method: "POST", path: "/api/treasury/prove-balance" },

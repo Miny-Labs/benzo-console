@@ -3,18 +3,37 @@ import type { EvmAddress, MemberId, OrgId, ShieldedAddress, Timestamp } from "./
 /** KYB lifecycle for the business entity. */
 export type KybStatus = "unverified" | "pending" | "approved" | "rejected";
 
+/** Org membership roles returned by the real BFF org endpoints. */
+export type OrgRole = "owner" | "admin" | "operator" | "viewer";
+
+/** Lightweight org projection returned by GET /orgs. */
+export interface OrgSummary {
+  id: OrgId;
+  name: string;
+  slug: string;
+  role: OrgRole;
+  createdAt: Timestamp;
+  /** Console-only/demo fields kept optional until every screen is on the real contract. */
+  legalName?: string;
+  country?: string;
+  kybStatus?: KybStatus;
+  complianceZoneId?: string;
+  baseAssetCode?: string;
+}
+
 /** A business tenant — the top-level account everything hangs off. */
 export interface Org {
   id: OrgId;
   name: string;
+  slug?: string;
   legalName?: string;
   /** ISO-3166 alpha-2 country code */
   country?: string;
-  kybStatus: KybStatus;
+  kybStatus?: KybStatus;
   /** active compliance zone (ASP allow/deny root set), e.g. "us" | "eu" */
   complianceZoneId?: string;
   /** custodied asset for this org (MVP: USDC) */
-  baseAssetCode: string;
+  baseAssetCode?: string;
   createdAt: Timestamp;
 }
 
