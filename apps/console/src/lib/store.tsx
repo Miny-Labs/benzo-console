@@ -115,10 +115,6 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const setActiveOrg = useCallback((id: string) => {
-    setSession((current) => current ? sessionWithActiveOrg(current, id) : current);
-  }, []);
-
   const refresh = useCallback(async () => {
     let nextSession: AuthSession;
     try {
@@ -182,6 +178,13 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     setLoading(false);
     return t.status === "fulfilled" && d.status === "fulfilled"; // treasury + dashboard are critical
   }, [clearReadModels]);
+
+  // Switching workspace must reload the org-scoped read models, not just the
+  // label — otherwise the UI shows one workspace's name over another's data.
+  const setActiveOrg = useCallback((id: string) => {
+    setSession((current) => (current ? sessionWithActiveOrg(current, id) : current));
+    void refresh();
+  }, [refresh]);
 
   useEffect(() => {
     let cancelled = false;
