@@ -84,6 +84,10 @@ const STATUS_LABEL: Record<string, string> = {
   processing: "sending",
   confirmed: "sent",
   settled: "sent",
+  complete: "complete",
+  ready: "ready",
+  running: "running",
+  paused: "paused",
 };
 
 /**
@@ -93,11 +97,12 @@ const STATUS_LABEL: Record<string, string> = {
  * payee, auditor-access and blockchain lifecycles. Unknown statuses fall through to
  * neutral so this stays backward-compatible.
  */
-const STATUS_SUCCESS = new Set(["confirmed", "settled", "completed", "paid", "active", "allowlisted", "connected", "approved", "accepted", "verified", "done"]);
+const STATUS_SUCCESS = new Set(["confirmed", "settled", "completed", "complete", "paid", "active", "allowlisted", "connected", "approved", "accepted", "verified", "done"]);
 const STATUS_WARNING = new Set([
   "needs_approval", "awaiting_approval", "pending", "pending_screening", "in_review", "proving",
   "submitting", "submitted_onchain", "confirming", "processing", "open", "due_soon",
   "expiring", "expiring_soon", "awaiting_kyc", "awaiting_deposit", "partially_paid", "invited", "queued",
+  "ready", "running", "paused", "submitted",
 ]);
 const STATUS_DANGER = new Set(["failed", "error", "blocked", "cancelled", "canceled", "expired", "revoked", "overdue", "reversed", "restricted", "suspended", "declined", "rejected"]);
 

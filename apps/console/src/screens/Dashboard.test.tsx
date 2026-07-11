@@ -33,7 +33,6 @@ describe("Dashboard", () => {
       members: [],
       policies: [],
       counterparties: [],
-      payrolls: [],
       masked: true,
       loading: false,
       error: null,
@@ -69,7 +68,7 @@ describe("Dashboard", () => {
         { id: "m_approver", role: "approver", status: "active" },
       ],
       counterparties: [{ id: "cp1", type: "contractor" }],
-      payrolls: [{ id: "pr1" }],
+      dashboard: { ...stateRef.current.dashboard, scheduledPayrolls: 1 },
       policies: [],
       masked: false,
     };

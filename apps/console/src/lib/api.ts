@@ -14,7 +14,8 @@ import type {
   CreateOrgResponse,
   CreateInvoiceRequest,
   CreatePaymentRequest,
-  CreatePayrollRequest,
+  CreatePayrollRunRequest,
+  CreatePayrollRunResponse,
   CreateViewingGrantRequest,
   DashboardSummary,
   Integration,
@@ -26,11 +27,17 @@ import type {
   OnboardingStatusResponse,
   OrgSummary,
   PaymentOrder,
-  PayrollBatch,
+  PausePayrollRunResponse,
+  PayrollProgressEvent,
+  PayrollRun,
+  PayrollRunResponse,
   DepositToTreasuryRequest,
   DepositToTreasuryResponse,
   ProvisionTreasuryResponse,
+  ResumePayrollRunResponse,
+  StartPayrollRunResponse,
   TreasuryDepositsResponse,
+  TreasuryUnderfundedError,
   StartOnboardingResponse,
   TreasuryView,
   ViewingGrant,
@@ -53,31 +60,6 @@ export interface OrgInvite {
   token: string;
   status: "sent" | "accepted" | "revoked";
   createdAt: string;
-}
-
-export interface PayrollProofResponse {
-  funded?: boolean;
-  approved?: boolean;
-  ok?: boolean;
-  onChain: boolean;
-  runTotal?: string;
-  cap?: string;
-  approvers?: number;
-  threshold?: number;
-  memberCount?: number;
-  lines?: unknown[];
-  provenAt?: string;
-  ref?: OnChainRef;
-}
-
-export interface PayrollPolicyProofLine {
-  counterpartyId: string;
-  capProof?: { withinCap: boolean; onChain?: boolean };
-  screenProof?: { innocent: boolean; onChain?: boolean };
-}
-
-export interface PayrollPolicyProofResponse extends PayrollProofResponse {
-  lines: PayrollPolicyProofLine[];
 }
 
 /** Maker-checker progress the BFF returns alongside an approve action. */
@@ -229,6 +211,26 @@ function prepareApiRequest(path: string, init?: RequestInit): { url: string; ini
   };
 }
 
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+
+  constructor(message: string, status: number, body: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+export function isTreasuryUnderfundedError(error: unknown): error is ApiError & { body: TreasuryUnderfundedError } {
+  return error instanceof ApiError
+    && typeof error.body === "object"
+    && error.body !== null
+    && "error" in error.body
+    && (error.body as { error?: unknown }).error === "treasury_underfunded";
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const prepared = prepareApiRequest(path, init);
   let res: Response | undefined;
@@ -236,14 +238,17 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
     res = await fetch(prepared.url, prepared.init);
     if (!res.ok) {
       let detail = `HTTP ${res.status}`;
+      let body: unknown;
       try {
-        const body = (await res.json()) as { error?: string };
-        if (body.error) detail = body.error;
+        body = await res.json();
+        if (typeof body === "object" && body !== null && "error" in body && typeof (body as { error?: unknown }).error === "string") {
+          detail = (body as { error: string }).error;
+        }
       } catch {
         /* ignore */
       }
       if (res.status === 401 && path !== "/auth/verify") notifyAuthRequired();
-      throw new Error(detail);
+      throw new ApiError(detail, res.status, body);
     }
     return (await res.json()) as T;
   } finally {
@@ -258,7 +263,18 @@ export interface OnboardingStatusSubscription {
 export type OnboardingStatusHandler = (onboarding: OnboardingStatus) => void;
 export type OnboardingStatusErrorHandler = (error: Error) => void;
 
+export interface PayrollProgressSubscription {
+  close: () => void;
+}
+
+export type PayrollProgressHandler = (event: PayrollProgressEvent) => void;
+export type PayrollProgressErrorHandler = (error: Error) => void;
+
 function terminalOnboardingStatus(status: OnboardingStatus["status"]): boolean {
+  return status === "complete" || status === "failed";
+}
+
+function terminalPayrollStatus(status: PayrollRun["status"]): boolean {
   return status === "complete" || status === "failed";
 }
 
@@ -345,6 +361,44 @@ function subscribeOnboardingStatus(
     startPolling();
   }
 
+  return { close };
+}
+
+function subscribePayrollProgress(
+  runId: string,
+  onProgress: PayrollProgressHandler,
+  onError?: PayrollProgressErrorHandler,
+): PayrollProgressSubscription {
+  let closed = false;
+  let pollTimer: number | null = null;
+
+  const close = () => {
+    closed = true;
+    if (pollTimer) window.clearTimeout(pollTimer);
+    pollTimer = null;
+  };
+
+  const poll = () => {
+    if (closed) return;
+    void realApi.getPayrollRun(runId).then(
+      ({ run, progress }) => {
+        if (closed) return;
+        onProgress({ runId: run.id, status: run.status, progress });
+        if (terminalPayrollStatus(run.status)) {
+          close();
+          return;
+        }
+        pollTimer = window.setTimeout(poll, 2_000);
+      },
+      (error) => {
+        if (closed) return;
+        onError?.(error instanceof Error ? error : new Error("Payroll progress polling failed."));
+        pollTimer = window.setTimeout(poll, 2_000);
+      },
+    );
+  };
+
+  poll();
   return { close };
 }
 
@@ -438,25 +492,17 @@ const realApi = {
   approvePayment: (id: string, body: ApproveRequest & { actorMemberId?: string }) =>
     http<PaymentOrder & { progress?: ApprovalProgressView }>(`/payments/${id}/approve`, { method: "POST", body: JSON.stringify(body) }),
 
-  payrolls: () => http<PayrollBatch[]>("/payrolls"),
-  // Amounts are COMPUTED server-side from each contractor's rate card; the caller
-  // only chooses WHO is in the run.
-  createPayroll: (body: { period: string; source: CreatePayrollRequest["source"]; lines: Array<{ counterpartyId: string }> }) =>
-    http<PayrollBatch>("/payrolls", { method: "POST", body: JSON.stringify(body) }),
-  approvePayroll: (id: string, body: { decision?: "approved" | "denied"; actorMemberId?: string } = { decision: "approved" }) =>
-    http<PayrollBatch & { progress?: ApprovalProgressView }>(`/payrolls/${id}/approve`, { method: "POST", body: JSON.stringify(body) }),
-  // "Payroll funded ✓" - prove ON-CHAIN (ORGBAL) the treasury covers this run's total.
-  proveFunded: (id: string) =>
-    http<PayrollProofResponse>(`/payrolls/${id}/prove-funded`, { method: "POST", body: "{}" }),
-  // Anonymous approver (Z5): prove >= threshold distinct approvers signed, on-chain (ORGAUTH), who hidden.
-  proveApproval: (id: string) =>
-    http<PayrollProofResponse>(`/payrolls/${id}/prove-approval`, { method: "POST", body: "{}" }),
-  // Verifiable payroll computation (Z6): prove run total derived from the rate card, on-chain (PAYCOMP), rate card private.
-  proveComputation: (id: string) =>
-    http<PayrollProofResponse>(`/payrolls/${id}/prove-computation`, { method: "POST", body: "{}" }),
-  // Compliance pre-flight (Z3 cap + Z4 sanctions screen) per line, on-chain, amounts/recipients hidden.
-  provePolicy: (id: string, cap: string) =>
-    http<PayrollPolicyProofResponse>(`/payrolls/${id}/prove-policy`, { method: "POST", body: JSON.stringify({ cap }) }),
+  createPayrollRun: (orgId: string, body: CreatePayrollRunRequest) =>
+    http<CreatePayrollRunResponse>(`/orgs/${encodeURIComponent(orgId)}/payroll`, { method: "POST", body: JSON.stringify(body) }),
+  getPayrollRun: (runId: string) =>
+    http<PayrollRunResponse>(`/payroll/${encodeURIComponent(runId)}`),
+  subscribePayrollProgress,
+  startPayrollRun: (runId: string) =>
+    http<StartPayrollRunResponse>(`/payroll/${encodeURIComponent(runId)}/start`, { method: "POST", body: "{}" }),
+  pausePayrollRun: (runId: string) =>
+    http<PausePayrollRunResponse>(`/payroll/${encodeURIComponent(runId)}/pause`, { method: "POST", body: "{}" }),
+  resumePayrollRun: (runId: string) =>
+    http<ResumePayrollRunResponse>(`/payroll/${encodeURIComponent(runId)}/resume`, { method: "POST", body: "{}" }),
 
   invoices: () => http<Invoice[]>("/invoices"),
   createInvoice: (body: CreateInvoiceRequest) =>
@@ -490,10 +536,6 @@ const realApi = {
     orgHash?: string;
   }) =>
     http<PrivateAuditAnchorResponse>("/audit/private-events/anchor", { method: "POST", body: JSON.stringify(body ?? {}) }),
-  // Per-contractor payslips for one run (gross, status, on-chain receipt).
-  payslips: (id: string) =>
-    http<Array<{ period: string; contractor: string; gross: string; status: string; txHash?: string; error?: string }>>(`/payrolls/${id}/payslips`),
-
   invites: () => http<OrgInvite[]>("/invites"),
   createInvite: (body: { kind: OrgInvite["kind"]; name?: string; email?: string; role?: string; handle?: string }) =>
     http<OrgInvite>("/invites", { method: "POST", body: JSON.stringify(body) }),

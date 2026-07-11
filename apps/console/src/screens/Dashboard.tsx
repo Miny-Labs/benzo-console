@@ -71,7 +71,7 @@ function primaryTreasuryMinor(treasury: TreasuryView | null | undefined, fallbac
  */
 function SetupBanner() {
   const nav = useNavigate();
-  const { treasury, members, policies, counterparties, payrolls, loading } = useConsole();
+  const { treasury, dashboard, members, policies, counterparties, loading } = useConsole();
   const [dismissed, setDismissed] = useState(() => localStorage.getItem("benzo.console.firstrun.dismissed") === "1");
   const [showDone, setShowDone] = useState(false);
 
@@ -83,7 +83,7 @@ function SetupBanner() {
   const hasApprover = members.length > 1 && members.some((m) => m.status !== "suspended" && canApprove(m.role));
   const hasPolicy = policies.length > 0;
   const hasContractor = counterparties.some((c) => c.type === "contractor");
-  const ranPayroll = payrolls.length > 0;
+  const ranPayroll = (dashboard?.scheduledPayrolls ?? 0) > 0 || !!dashboard?.recentActivity.some((a) => a.kind === "payroll");
 
   const items = [
     { key: "fund", done: funded, title: "Fund your treasury", prompt: "Add USDC so you can run your first payout", cta: "Fund treasury", to: "/treasury" },

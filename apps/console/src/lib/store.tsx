@@ -14,7 +14,6 @@ import type {
   LiveStatusResponse,
   Member,
   PaymentOrder,
-  PayrollBatch,
   TreasuryView,
   ViewingGrant,
 } from "@benzo/types";
@@ -27,7 +26,6 @@ interface ConsoleState {
   dashboard: DashboardSummary | null;
   treasury: TreasuryView | null;
   payments: PaymentOrder[];
-  payrolls: PayrollBatch[];
   invoices: Invoice[];
   grants: ViewingGrant[];
   counterparties: Counterparty[];
@@ -78,7 +76,6 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [treasury, setTreasury] = useState<TreasuryView | null>(null);
   const [payments, setPayments] = useState<PaymentOrder[]>([]);
-  const [payrolls, setPayrolls] = useState<PayrollBatch[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [grants, setGrants] = useState<ViewingGrant[]>([]);
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
@@ -98,7 +95,6 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     setDashboard(null);
     setTreasury(null);
     setPayments([]);
-    setPayrolls([]);
     setInvoices([]);
     setGrants([]);
     setCounterparties([]);
@@ -154,7 +150,6 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
       readModel("dashboard", api.dashboard, CHAIN_READ_TIMEOUT_MS),
       readModel("treasury", () => api.orgTreasury(activeOrgId), CHAIN_READ_TIMEOUT_MS),
       readModel("payments", api.payments),
-      readModel("payrolls", api.payrolls),
       readModel("invoices", api.invoices),
       readModel("grants", api.grants),
       readModel("counterparties", api.counterparties),
@@ -162,12 +157,11 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
       readModel("members", api.members),
       readModel("policies", api.policies),
     ]);
-    const [l, d, t, p, pr, inv, g, c, a, m, pol] = results;
+    const [l, d, t, p, inv, g, c, a, m, pol] = results;
     if (l.status === "fulfilled") setLiveStatus(l.value);
     if (d.status === "fulfilled") setDashboard(d.value);
     if (t.status === "fulfilled") setTreasury(t.value);
     if (p.status === "fulfilled") setPayments(p.value);
-    if (pr.status === "fulfilled") setPayrolls(pr.value);
     if (inv.status === "fulfilled") setInvoices(inv.value);
     if (g.status === "fulfilled") setGrants(g.value);
     if (c.status === "fulfilled") setCounterparties(c.value);
@@ -228,8 +222,8 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider
-      value={{ session, liveStatus, dashboard, treasury, payments, payrolls, invoices, grants, counterparties, accounts, members, policies, loading, error, masked, toggleMasked, setActiveOrg, refresh }}
+      <Ctx.Provider
+      value={{ session, liveStatus, dashboard, treasury, payments, invoices, grants, counterparties, accounts, members, policies, loading, error, masked, toggleMasked, setActiveOrg, refresh }}
     >
       {children}
     </Ctx.Provider>

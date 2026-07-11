@@ -106,12 +106,10 @@ describe("console API idempotency", () => {
       () => api.importRoster("name,handle,rate\\nA,@a,1"),
       () => api.createPayment(payment),
       () => api.approvePayment("po_1", { decision: "approved", actorMemberId: "mem_1" }),
-      () => api.createPayroll({ period: "2026-06", source: "manual", lines: [] }),
-      () => api.approvePayroll("pr_1", { decision: "approved", actorMemberId: "mem_1" }),
-      () => api.proveFunded("pr_1"),
-      () => api.proveApproval("pr_1"),
-      () => api.proveComputation("pr_1"),
-      () => api.provePolicy("pr_1", "5000"),
+      () => api.createPayrollRun("org_1", { csv: "recipient,amount\\n@a,1", token: "usdc" }),
+      () => api.startPayrollRun("pr_1"),
+      () => api.pausePayrollRun("pr_1"),
+      () => api.resumePayrollRun("pr_1"),
       () => api.createInvoice({ number: "INV-1", counterpartyId: "cp_1", lineItems: [], assetCode: "USDC", dueDate: "2026-07-01" }),
       () => api.payInvoice("inv_1"),
       () => api.netInvoices("10", "7"),
@@ -205,6 +203,47 @@ describe("console API idempotency", () => {
     expect(callHeaders(fetchMock.mock.calls[0]).get("idempotency-key")).toBeNull();
     expect(callHeaders(fetchMock.mock.calls[1]).get("idempotency-key")).toMatch(/^idem_/);
     expect(callHeaders(fetchMock.mock.calls[2]).get("idempotency-key")).toBeNull();
+  });
+
+  it("uses the real payroll CSV run lifecycle endpoints", async () => {
+    const progress = { total: 1, pending: 1, proving: 0, submitted: 0, confirmed: 0, failed: 0, proved: 0 };
+    const run = {
+      id: "pr_1",
+      orgId: "org_1",
+      status: "ready",
+      itemCount: 1,
+      totalAmount: "1",
+      token: "usdc",
+      tokenId: "avax-usdc",
+      createdBy: "usr_1",
+      error: null,
+      createdAt: "2026-07-10T00:00:00.000Z",
+      updatedAt: "2026-07-10T00:00:00.000Z",
+    };
+    const item = { rowIndex: 2, recipientInput: "@a", resolvedAddress: "0x1234567890abcdef1234567890abcdef12345678", amount: "1", status: "pending", error: null };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ runId: "pr_1", status: "ready", token: "usdc", tokenId: "avax-usdc", summary: { total: 1, valid: 1, invalid: 0, totalAmount: "1", token: "usdc", tokenId: "avax-usdc" }, items: [item] }, 201))
+      .mockResolvedValueOnce(jsonResponse({ run, progress, items: [item] }))
+      .mockResolvedValueOnce(jsonResponse({ runId: "pr_1", status: "running", enqueued: true, totalPending: 1, progress }, 202));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.createPayrollRun("org_1", { csv: "recipient,amount\n@a,1", token: "usdc" })).resolves.toMatchObject({ runId: "pr_1" });
+    await expect(api.getPayrollRun("pr_1")).resolves.toMatchObject({ run: { id: "pr_1" }, progress });
+    await expect(api.startPayrollRun("pr_1")).resolves.toMatchObject({ status: "running", enqueued: true });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      apiHref("/orgs/org_1/payroll"),
+      apiHref("/payroll/pr_1"),
+      apiHref("/payroll/pr_1/start"),
+    ]);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ csv: "recipient,amount\n@a,1", token: "usdc" }),
+      credentials: "include",
+    });
+    expect(callHeaders(fetchMock.mock.calls[0]).get("idempotency-key")).toMatch(/^idem_/);
+    expect(callHeaders(fetchMock.mock.calls[1]).get("idempotency-key")).toBeNull();
+    expect(callHeaders(fetchMock.mock.calls[2]).get("idempotency-key")).toMatch(/^idem_/);
   });
 
   it("subscribes to onboarding status with credentialed EventSource", () => {
