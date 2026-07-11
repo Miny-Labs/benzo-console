@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CreatePaymentRequest } from "@benzo/types";
+import type { CreatePaymentRequest, OnboardingStatus } from "@benzo/types";
 import { ACTIVE_ORG_KEY, api, apiHref } from "./api";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -13,6 +13,27 @@ function callHeaders(call: unknown[]): Headers {
   return call[1] instanceof Object && "headers" in call[1]
     ? call[1].headers as Headers
     : new Headers();
+}
+
+function onboardingStatus(status: OnboardingStatus["status"]): OnboardingStatus {
+  return {
+    id: "onb_1",
+    userId: "usr_1",
+    address: "0x1234567890abcdef1234567890abcdef12345678",
+    chainEnv: "testnet",
+    chainId: 43113,
+    status,
+    error: status === "failed" ? "failed" : null,
+    createdAt: "2026-07-10T00:00:00.000Z",
+    updatedAt: "2026-07-10T00:00:02.000Z",
+    mockKyc: null,
+    steps: {
+      kyc: { completedAt: status === "pending_kyc" ? null : "2026-07-10T00:00:01.000Z", provider: status === "pending_kyc" ? null : "mock" },
+      allowlist: { completedAt: ["allowlisted", "gas_dripped", "awaiting_registration", "complete"].includes(status) ? "2026-07-10T00:00:02.000Z" : null, result: null, txHash: null },
+      gas: { completedAt: ["gas_dripped", "awaiting_registration", "complete"].includes(status) ? "2026-07-10T00:00:03.000Z" : null, result: null, txHash: null },
+      registration: { completedAt: status === "complete" ? "2026-07-10T00:00:04.000Z" : null, lastCheckedAt: ["awaiting_registration", "complete"].includes(status) ? "2026-07-10T00:00:04.000Z" : null },
+    },
+  };
 }
 
 describe("console API idempotency", () => {
@@ -73,12 +94,11 @@ describe("console API idempotency", () => {
       amount: { amount: "10000000", assetCode: "USDC" },
     } satisfies CreatePaymentRequest;
     const actions: Array<() => Promise<unknown>> = [
-      () => api.saveOnboarding({ name: "Acme" }),
+      () => api.createOrg({ name: "Acme", slug: "acme" }),
+      () => api.startOnboarding({ name: "Acme Inc.", country: "US" }),
       () => api.siweVerify("m", "0xsig"),
       () => api.logout(),
-      () => api.submitKyb({ legalName: "Acme Inc." }),
-      () => api.provisionTreasury(),
-      () => api.finishOnboarding(),
+      () => api.provisionTreasury("org_1"),
       () => api.proveBalance("1"),
       () => api.proveTotal(),
       () => api.proveSolvency(),
@@ -127,6 +147,73 @@ describe("console API idempotency", () => {
 
     await api.payInvoice("inv_1");
     expect(callHeaders(fetchMock.mock.calls[1]).get("idempotency-key")).toBe(firstKey);
+  });
+
+  it("uses the real org and eERC onboarding endpoints", async () => {
+    const complete = onboardingStatus("complete");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ org: { id: "org_1", name: "Acme", slug: "acme", role: "owner", createdAt: "2026-07-10T00:00:00.000Z" }, role: "owner" }))
+      .mockResolvedValueOnce(jsonResponse({ jobId: "job_1", onboarding: onboardingStatus("pending_kyc") }, 202))
+      .mockResolvedValueOnce(jsonResponse({ onboarding: complete }))
+      .mockResolvedValueOnce(jsonResponse({ address: "0xtreasury", custody: "managed", registered: true, consented: true, registrationTxHash: "0xreg" }, 201));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.createOrg({ name: "Acme", slug: "acme" })).resolves.toMatchObject({ role: "owner", org: { id: "org_1" } });
+    await expect(api.startOnboarding({ name: "Acme Inc.", country: "US" })).resolves.toMatchObject({ jobId: "job_1" });
+    await expect(api.onboardingStatus()).resolves.toMatchObject({ onboarding: { status: "complete" } });
+    await expect(api.provisionTreasury("org_1")).resolves.toMatchObject({ address: "0xtreasury", custody: "managed" });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      apiHref("/orgs"),
+      apiHref("/onboarding/start"),
+      apiHref("/onboarding/status"),
+      apiHref("/orgs/org_1/treasury"),
+    ]);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: "POST", body: JSON.stringify({ name: "Acme", slug: "acme" }), credentials: "include" });
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "POST", body: JSON.stringify({ mockKyc: { name: "Acme Inc.", country: "US" } }), credentials: "include" });
+    expect(callHeaders(fetchMock.mock.calls[2]).get("idempotency-key")).toBeNull();
+    expect(fetchMock.mock.calls[3][1]).toMatchObject({ method: "POST", body: JSON.stringify({ consent: true }), credentials: "include" });
+  });
+
+  it("subscribes to onboarding status with credentialed EventSource", () => {
+    class FakeEventSource {
+      static instances: FakeEventSource[] = [];
+      url: string | URL;
+      init?: EventSourceInit;
+      private listeners = new Map<string, Array<(event: MessageEvent<string>) => void>>();
+
+      constructor(url: string | URL, init?: EventSourceInit) {
+        this.url = url;
+        this.init = init;
+        FakeEventSource.instances.push(this);
+      }
+
+      addEventListener(type: string, listener: EventListenerOrEventListenerObject | null) {
+        if (typeof listener !== "function") return;
+        const listeners = this.listeners.get(type) ?? [];
+        listeners.push(listener as (event: MessageEvent<string>) => void);
+        this.listeners.set(type, listeners);
+      }
+
+      close() {}
+
+      emit(type: string, data: unknown) {
+        const event = new MessageEvent(type, { data: JSON.stringify(data) });
+        for (const listener of this.listeners.get(type) ?? []) listener(event);
+      }
+    }
+    vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
+    const seen: OnboardingStatus["status"][] = [];
+
+    const subscription = api.subscribeOnboardingStatus((status) => seen.push(status.status));
+    const source = FakeEventSource.instances[0];
+    source.emit("status", { onboarding: onboardingStatus("kyc_approved") });
+    source.emit("status", { onboarding: onboardingStatus("complete") });
+    subscription.close();
+
+    expect(source.url).toBe(apiHref("/onboarding/status/stream"));
+    expect(source.init).toMatchObject({ withCredentials: true });
+    expect(seen).toEqual(["kyc_approved", "complete"]);
   });
 
   it("loads proof receipts through the authenticated API without mutation idempotency", async () => {

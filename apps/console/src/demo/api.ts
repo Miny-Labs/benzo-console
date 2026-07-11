@@ -8,9 +8,14 @@
  */
 import type {
   Counterparty,
+  CreateOrgResponse,
   Invoice,
+  OnboardingStatus,
+  OnboardingStatusResponse,
   PaymentOrder,
   PayrollBatch,
+  ProvisionTreasuryResponse,
+  StartOnboardingResponse,
   ViewingGrant,
 } from "@benzo/types";
 import type {
@@ -30,6 +35,7 @@ import { createDemoDb, dashboardSummary, treasuryView, usd } from "./data";
 // PURE-annotated so a normal build (DEMO_MODE folds to false → demoApi unused)
 // tree-shakes the entire demo graph away, leaving the production bundle unchanged.
 const db = /* @__PURE__ */ createDemoDb();
+let demoMockKyc: { name?: string; country?: string } | undefined;
 
 // ---- fake-chain helpers ---------------------------------------------------
 function randHex(len: number): string {
@@ -65,11 +71,44 @@ const byId = <T extends { id: string }>(arr: T[], id: string) => arr.find((x) =>
 const READ = 140;
 const PROVE = 640;
 const SETTLE = 720;
+const ONBOARDING_STEP = 520;
 
 function activeOrg() {
   const org = db.session.activeOrg;
   if (!org) throw new Error("No demo org");
   return org;
+}
+
+const ONBOARDING_STATUSES = ["pending_kyc", "kyc_approved", "allowlisted", "gas_dripped", "awaiting_registration", "complete"] as const;
+
+function setDemoOnboardingStatus(status: OnboardingStatus["status"], mockKycPayload?: { name?: string; country?: string }): OnboardingStatus {
+  const order = ONBOARDING_STATUSES.indexOf(status as (typeof ONBOARDING_STATUSES)[number]);
+  const timestamp = now();
+  const kycDone = order >= 1;
+  const allowlistDone = order >= 2;
+  const gasDone = order >= 3;
+  const registrationChecked = order >= 4;
+  const registrationDone = order >= 5;
+  db.onboardingStatus = {
+    ...db.onboardingStatus,
+    status,
+    error: status === "failed" ? db.onboardingStatus.error ?? "Onboarding failed." : null,
+    updatedAt: timestamp,
+    mockKyc: kycDone
+      ? {
+        approvedAt: timestamp,
+        payload: mockKycPayload ?? db.onboardingStatus.mockKyc?.payload ?? {},
+        provider: "demo",
+      }
+      : null,
+    steps: {
+      kyc: { completedAt: kycDone ? timestamp : null, provider: kycDone ? "demo" : null },
+      allowlist: { completedAt: allowlistDone ? timestamp : null, result: allowlistDone ? { ok: true } : null, txHash: allowlistDone ? fakeTx() : null },
+      gas: { completedAt: gasDone ? timestamp : null, result: gasDone ? { ok: true } : null, txHash: gasDone ? fakeTx() : null },
+      registration: { completedAt: registrationDone ? timestamp : null, lastCheckedAt: registrationChecked ? timestamp : null },
+    },
+  };
+  return clone(db.onboardingStatus);
 }
 
 export const demoApi = {
@@ -380,14 +419,54 @@ export const demoApi = {
     return clone(p);
   },
 
-  // ---- onboarding / auth (unused: demo boots straight into the Shell) -----
-  onboarding: async () => ({}),
-  saveOnboarding: async (patch: unknown) => patch as Record<string, unknown>,
-  submitKyb: async () => ({ status: "approved" as const, provider: "demo", inquiryRef: `kyb_${randHex(6)}`, checks: ["identity", "sanctions"], onChain: true, txHash: fakeTx() }),
-  kybStatus: async () => ({ status: "approved" as const, inquiryRef: `kyb_${randHex(6)}`, onChain: true }),
-  provisionTreasury: async () => ({ onChain: true, txHash: fakeTx(), mvkRoot: fakeRoot(), treasuryAddress: db.publicAddress }),
-  registerOwnerMvk: async () => ({ onChain: true, txHash: fakeTx(), mvkRoot: fakeRoot() }),
-  finishOnboarding: async () => clone(db.session),
+  // ---- onboarding / auth -------------------------------------------------
+  createOrg: async (body: { name: string; slug: string }): Promise<CreateOrgResponse> => {
+    await delay(READ);
+    const org = { id: `org_${randHex(6)}`, name: body.name, slug: body.slug, role: "owner" as const, createdAt: now() };
+    db.session.orgs = [org, ...db.session.orgs.filter((existing) => existing.id !== org.id)];
+    db.session.activeOrg = org;
+    db.session.role = "owner";
+    return { org: clone(org), role: "owner" };
+  },
+  startOnboarding: async (mockKyc?: { name?: string; country?: string }): Promise<StartOnboardingResponse> => {
+    await delay(READ);
+    demoMockKyc = mockKyc;
+    db.onboardingStatus = {
+      ...db.onboardingStatus,
+      id: `onb_${randHex(6)}`,
+      status: "pending_kyc",
+      error: null,
+      createdAt: now(),
+      updatedAt: now(),
+      mockKyc: null,
+      steps: {
+        kyc: { completedAt: null, provider: null },
+        allowlist: { completedAt: null, result: null, txHash: null },
+        gas: { completedAt: null, result: null, txHash: null },
+        registration: { completedAt: null, lastCheckedAt: null },
+      },
+    };
+    return { jobId: `job_${randHex(8)}`, onboarding: clone(db.onboardingStatus) };
+  },
+  onboardingStatus: async (): Promise<OnboardingStatusResponse> => (await delay(READ), { onboarding: clone(db.onboardingStatus) }),
+  subscribeOnboardingStatus: (onStatus: (onboarding: OnboardingStatus) => void): { close: () => void } => {
+    let closed = false;
+    const timers = ONBOARDING_STATUSES.map((status, index) => window.setTimeout(() => {
+      if (closed) return;
+      onStatus(setDemoOnboardingStatus(status, demoMockKyc));
+    }, index * ONBOARDING_STEP));
+    return {
+      close: () => {
+        closed = true;
+        timers.forEach((timer) => window.clearTimeout(timer));
+      },
+    };
+  },
+  provisionTreasury: async (_orgId: string): Promise<ProvisionTreasuryResponse> => {
+    await delay(SETTLE);
+    db.treasuryProvision = { ...db.treasuryProvision, registered: true, consented: true, registrationTxHash: fakeTx() };
+    return clone(db.treasuryProvision);
+  },
   orgs: async () => ({ orgs: clone(db.session.orgs) }),
   siweNonce: async () => ({ nonce: randHex(16) }),
   siweVerify: async () => ({ user: clone(db.session.user) }),

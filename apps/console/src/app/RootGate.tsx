@@ -1,9 +1,9 @@
 /**
- * RootGate - decides between SIWE sign-in and the workspace. Real mode trusts the
- * cookie-backed /auth/me probe in the store; demo mode keeps the old local
- * onboarding flag so the seeded showcase still boots straight into the shell.
+ * RootGate - decides between SIWE sign-in, no-org onboarding, and the workspace.
+ * Real mode trusts the cookie-backed /auth/me probe in the store; demo mode keeps
+ * the old local onboarding flag so the seeded showcase still boots into the shell.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Shell } from "./Shell";
 import { Onboarding } from "./Onboarding";
 import { DesktopOnly, useIsDesktop } from "./DesktopOnly";
@@ -16,11 +16,23 @@ export function RootGate() {
   // Demo mode skips SIWE onboarding entirely and boots into the Shell (the
   // desktop-only gate below still applies — this stays a desktop product).
   const [onboarded, setOnboarded] = useState(() => DEMO_MODE || localStorage.getItem("benzo.console.onboarded") === "1");
+  const [orgOnboarding, setOrgOnboarding] = useState(false);
   function finish() {
     localStorage.setItem("benzo.console.onboarded", "1");
     setOnboarded(true);
     void refresh();
   }
+  function finishOrgOnboarding() {
+    setOrgOnboarding(false);
+    void refresh();
+  }
+  useEffect(() => {
+    if (!session) {
+      setOrgOnboarding(false);
+      return;
+    }
+    if (!session.activeOrg) setOrgOnboarding(true);
+  }, [session]);
   if (!isDesktop) return <DesktopOnly />;
   if (DEMO_MODE) return onboarded ? <Shell /> : <Onboarding onDone={finish} />;
   if (loading && !session) {
@@ -30,5 +42,6 @@ export function RootGate() {
       </div>
     );
   }
-  return session ? <Shell /> : <Onboarding onDone={() => void refresh()} />;
+  if (session && (orgOnboarding || !session.activeOrg)) return <Onboarding onDone={finishOrgOnboarding} />;
+  return session?.activeOrg ? <Shell /> : <Onboarding onDone={() => void refresh()} />;
 }
