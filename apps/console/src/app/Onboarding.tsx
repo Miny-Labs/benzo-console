@@ -4,17 +4,19 @@
  * the org's managed treasury → land in the workspace. On Avalanche the KYB
  * decision and proof receipts are coordinated by services/api.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { BadgeCheck, Building2, Check, FileCheck2, Landmark, Loader2, ScanSearch, ShieldCheck, Sparkles, Users, Wallet } from "lucide-react";
 import { useAccount, useConnect, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
-import { api, type OnboardingDraft, type SiweNonceResponse } from "../lib/api";
+import type { OnboardingStatus, OrgSummary, ProvisionTreasuryResponse } from "@benzo/types";
+import { ACTIVE_ORG_KEY, api, type OnboardingStatusSubscription, type SiweNonceResponse } from "../lib/api";
 import { friendlyError } from "../lib/format";
 import { CHAIN_ID, NETWORK_LABEL } from "../lib/network";
+import { useConsole } from "../lib/store";
 import { Logo } from "../ui/Logo";
 import { StageVideo } from "../ui/StageVideo";
 import { EASE } from "../ui/motion";
-import { Button, Card, Pill } from "../ui/primitives";
+import { Button, Card } from "../ui/primitives";
 import { Field, Input, Select, useToast } from "../ui/controls";
 
 // Team is intentionally NOT a step: it collected nothing and gated nothing (a
@@ -32,7 +34,8 @@ const STEPS = [
 type StepKey = (typeof STEPS)[number]["key"];
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
-  return <AuthShell onAuthed={onDone} />;
+  const { session } = useConsole();
+  return session ? <Wizard onDone={onDone} /> : <AuthShell onAuthed={onDone} />;
 }
 
 // ----------------------------------------------------------------- auth / SIWE
@@ -130,52 +133,144 @@ function AuthShell({ onAuthed }: { onAuthed: () => void }) {
 }
 
 // ----------------------------------------------------------------- wizard
+interface BusinessDraft {
+  name?: string;
+  legalName?: string;
+  country?: string;
+  entityType?: string;
+  registrationNumber?: string;
+  taxId?: string;
+  complianceZoneId?: string;
+}
+
+type BusyState = "org" | "onboarding" | "treasury" | "finish" | null;
+
+const EERC_STEPS = [
+  { key: "kyc", label: "KYC approval", icon: FileCheck2 },
+  { key: "allowlist", label: "Address allowlist", icon: ShieldCheck },
+  { key: "gas", label: "Gas drip", icon: Landmark },
+  { key: "registration", label: "eERC registration", icon: Wallet },
+] as const;
+
 export function Wizard({ onDone }: { onDone: () => void }) {
   const toast = useToast();
+  const { refresh } = useConsole();
+  const streamRef = useRef<OnboardingStatusSubscription | null>(null);
   const [stepIdx, setStepIdx] = useState(0);
-  const [draft, setDraft] = useState<OnboardingDraft>({ country: "US", entityType: "C-Corp", complianceZoneId: "zone_us" });
-  const [kyb, setKyb] = useState<OnboardingDraft["kyb"] | null>(null);
-  const [mvk, setMvk] = useState<OnboardingDraft["mvk"] | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState<BusinessDraft>({ country: "US", entityType: "C-Corp", complianceZoneId: "zone_us" });
+  const [createdOrg, setCreatedOrg] = useState<OrgSummary | null>(null);
+  const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
+  const [onboardingError, setOnboardingError] = useState<string | null>(null);
+  const [treasury, setTreasury] = useState<ProvisionTreasuryResponse | null>(null);
+  const [busy, setBusy] = useState<BusyState>(null);
   const step = STEPS[stepIdx];
-  const set = (p: Partial<OnboardingDraft>) => setDraft((d) => ({ ...d, ...p }));
+  const set = (p: Partial<BusinessDraft>) => setDraft((d) => ({ ...d, ...p }));
+  const slug = slugify(draft.name ?? "");
+  const onboardingComplete = onboarding?.status === "complete";
 
   const canNext =
-    step.key === "org" ? !!draft.name && !!draft.legalName :
-    step.key === "kyb" ? kyb?.status === "approved" :
-    step.key === "treasury" ? !!mvk :
+    step.key === "org" ? !!draft.name?.trim() :
+    step.key === "kyb" ? onboardingComplete :
+    step.key === "treasury" ? !!treasury?.address :
     true;
 
+  useEffect(() => () => streamRef.current?.close(), []);
+
+  async function createOrg() {
+    if (createdOrg) return true;
+    const name = draft.name?.trim();
+    if (!name) return false;
+    setBusy("org");
+    try {
+      const { org } = await api.createOrg({ name, slug });
+      localStorage.setItem(ACTIVE_ORG_KEY, org.id);
+      setCreatedOrg(org);
+      toast({ title: "Workspace created", tone: "success" });
+      return true;
+    } catch (e) {
+      toast({ title: friendlyError(e), tone: "danger" });
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function next() {
+    if (step.key === "org") {
+      const ok = await createOrg();
+      if (!ok) return;
+    }
     if (stepIdx < STEPS.length - 1) {
-      // persist draft as we go (resumable) - if the save fails, let them keep going
-      // but warn so they know progress might not be picked up if they reload.
-      void api.saveOnboarding(draft).catch(() =>
-        toast({ title: "Couldn't save your progress - you can keep going, but it may not resume if you reload.", tone: "danger" }),
-      );
       setStepIdx((i) => i + 1);
     } else {
-      setBusy(true);
+      setBusy("finish");
       try {
-        await api.finishOnboarding();
+        await refresh();
         onDone();
       } catch (e) {
         toast({ title: friendlyError(e), tone: "danger" });
-        setBusy(false);
+      } finally {
+        setBusy(null);
       }
     }
   }
 
-  async function registerMvk() {
-    setBusy(true);
+  async function runOnboarding() {
+    streamRef.current?.close();
+    setBusy("onboarding");
+    setOnboardingError(null);
     try {
-      const r = await api.provisionTreasury();
-      setMvk(r);
-      toast({ title: r.onChain ? "Your managed treasury is ready" : "Treasury request prepared, but network registration did not complete", tone: r.onChain ? "success" : "danger" });
+      const started = await api.startOnboarding({ name: draft.legalName?.trim() || draft.name?.trim(), country: draft.country });
+      setOnboarding(started.onboarding);
+      if (started.onboarding.status === "failed") {
+        setOnboardingError(started.onboarding.error ?? "eERC onboarding failed.");
+        setBusy(null);
+        return;
+      }
+      if (started.onboarding.status === "complete") {
+        setBusy(null);
+        return;
+      }
+      streamRef.current = api.subscribeOnboardingStatus(
+        (status) => {
+          setOnboarding(status);
+          if (status.status === "failed") {
+            setOnboardingError(status.error ?? "eERC onboarding failed.");
+            setBusy(null);
+            streamRef.current = null;
+          }
+          if (status.status === "complete") {
+            setBusy(null);
+            streamRef.current = null;
+          }
+        },
+        (error) => setOnboardingError(friendlyError(error, "Waiting for eERC onboarding status.")),
+      );
+    } catch (e) {
+      toast({ title: friendlyError(e), tone: "danger" });
+      setBusy(null);
+    }
+  }
+
+  async function provisionTreasury() {
+    const orgId = createdOrg?.id;
+    if (!orgId) {
+      setStepIdx(0);
+      toast({ title: "Create the workspace before provisioning treasury.", tone: "danger" });
+      return;
+    }
+    setBusy("treasury");
+    try {
+      const response = await api.provisionTreasury(orgId);
+      setTreasury(response);
+      toast({
+        title: response.registered ? "Your managed treasury is ready" : "Treasury provisioned, registration is still pending",
+        tone: response.registered ? "success" : "danger",
+      });
     } catch (e) {
       toast({ title: friendlyError(e), tone: "danger" });
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -206,24 +301,32 @@ export function Wizard({ onDone }: { onDone: () => void }) {
           <motion.div key={step.key} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, ease: EASE }} className="flex-1">
               {step.key === "org" ? (
                 <Step title="About your business" hint="The legal entity that will hold the treasury.">
-                  <Field label="Business name"><Input value={draft.name ?? ""} maxLength={80} onChange={(e) => set({ name: e.target.value })} placeholder="Company name" data-testid="org-name" /></Field>
-                  <Field label="Legal name"><Input value={draft.legalName ?? ""} maxLength={80} onChange={(e) => set({ legalName: e.target.value })} placeholder="Legal company name" data-testid="org-legal" /></Field>
+                  <Field label="Business name"><Input value={draft.name ?? ""} maxLength={80} onChange={(e) => set({ name: e.target.value })} placeholder="Company name" data-testid="org-name" disabled={!!createdOrg} /></Field>
+                  <Field label="Legal name"><Input value={draft.legalName ?? ""} maxLength={80} onChange={(e) => set({ legalName: e.target.value })} placeholder="Legal company name" data-testid="org-legal" disabled={!!createdOrg} /></Field>
                   <div className="grid grid-cols-2 gap-3">
-                    <Select label="Country" value={draft.country} onChange={(e) => set({ country: e.target.value })}>
+                    <Select label="Country" value={draft.country} onChange={(e) => set({ country: e.target.value })} disabled={!!createdOrg}>
                       <option value="US">United States</option><option value="GB">United Kingdom</option><option value="DE">Germany</option><option value="SG">Singapore</option>
                     </Select>
-                    <Select label="Entity type" value={draft.entityType} onChange={(e) => set({ entityType: e.target.value })}>
+                    <Select label="Entity type" value={draft.entityType} onChange={(e) => set({ entityType: e.target.value })} disabled={!!createdOrg}>
                       <option>C-Corp</option><option>LLC</option><option>Ltd</option><option>GmbH</option>
                     </Select>
                   </div>
+                  <div className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-[12px] text-muted">
+                    Workspace slug <span className="font-mono font-semibold text-ink" data-testid="org-slug">{slug || "company-name"}</span>
+                  </div>
+                  {createdOrg ? (
+                    <div className="rounded-xl border border-success/25 bg-success/[0.06] p-3.5 text-[13px] font-semibold text-[#1d7a52]">
+                      <Check size={15} className="mr-1.5 inline" /> {createdOrg.name} is active for this setup.
+                    </div>
+                  ) : null}
                 </Step>
               ) : step.key === "kyb" ? (
-                <Step title="Verify your business (KYB)" hint="Business registration + beneficial-owner screening. The decision is recorded as an auditable attestation.">
+                <Step title="Run eERC onboarding" hint="Benzo approves KYC, allowlists your wallet, drips gas, and waits for eERC registration.">
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Registration #"><Input value={draft.registrationNumber ?? ""} onChange={(e) => set({ registrationNumber: e.target.value })} placeholder="Registration number" disabled={kyb?.status === "approved"} /></Field>
-                    <Field label="Tax ID (EIN)"><Input value={draft.taxId ?? ""} onChange={(e) => set({ taxId: e.target.value })} placeholder="Tax identifier" disabled={kyb?.status === "approved"} /></Field>
+                    <Field label="Registration #"><Input value={draft.registrationNumber ?? ""} onChange={(e) => set({ registrationNumber: e.target.value })} placeholder="Registration number" disabled={busy === "onboarding" || onboardingComplete} /></Field>
+                    <Field label="Tax ID (EIN)"><Input value={draft.taxId ?? ""} onChange={(e) => set({ taxId: e.target.value })} placeholder="Tax identifier" disabled={busy === "onboarding" || onboardingComplete} /></Field>
                   </div>
-                  <KybVerify draft={draft} kyb={kyb} onVerified={setKyb} onError={(m) => toast({ title: m, tone: "danger" })} />
+                  <EercOnboarding onboarding={onboarding} busy={busy === "onboarding"} error={onboardingError} onRun={runOnboarding} />
                 </Step>
               ) : step.key === "zone" ? (
                 <Step title="Where money can move" hint="Pick the regions you operate in. We only let funds move to approved, compliant destinations.">
@@ -236,13 +339,14 @@ export function Wizard({ onDone }: { onDone: () => void }) {
                 </Step>
               ) : step.key === "treasury" ? (
                 <Step title="Provision your managed treasury" hint="Benzo creates the managed treasury and scoped read material your team uses for reporting and auditor proofs.">
-                  {mvk ? (
+                  {treasury ? (
                     <div className="rounded-xl border border-success/25 bg-success/[0.06] p-4" data-testid="mvk-result">
-                      <div className="flex items-center gap-2 text-[14px] font-semibold text-[#1d7a52]"><Check size={16} /> Your managed treasury is ready{mvk.onChain ? "" : " · network registration pending"}</div>
-                      {mvk.txHash ? <div className="mt-1 break-all font-mono text-[11px] text-muted">ref {mvk.txHash}</div> : null}
+                      <div className="flex items-center gap-2 text-[14px] font-semibold text-[#1d7a52]"><Check size={16} /> Your managed treasury is ready{treasury.registered ? "" : " · registration pending"}</div>
+                      <div className="mt-2 break-all font-mono text-[11px] text-muted">address {treasury.address}</div>
+                      {treasury.registrationTxHash ? <div className="mt-1 break-all font-mono text-[11px] text-muted">eERC registration {treasury.registrationTxHash}</div> : null}
                     </div>
                   ) : (
-                    <Button loading={busy} onClick={registerMvk} data-testid="mvk-register"><ShieldCheck size={16} /> Provision treasury</Button>
+                    <Button loading={busy === "treasury"} onClick={provisionTreasury} data-testid="mvk-register"><ShieldCheck size={16} /> Provision treasury</Button>
                   )}
                 </Step>
               ) : (
@@ -251,9 +355,10 @@ export function Wizard({ onDone }: { onDone: () => void }) {
                     <Row k="Business" v={draft.name ?? "Not set"} />
                     <Row k="Legal" v={draft.legalName ?? "Not set"} />
                     <Row k="Country" v={draft.country ?? "Not set"} />
-                    <Row k="KYB" v={kyb?.status === "approved" ? (kyb.onChain ? "Verified on-chain" : "Verified") : "Pending"} />
+                    <Row k="eERC onboarding" v={onboardingStatusLabel(onboarding)} />
                     <Row k="Compliance" v={draft.complianceZoneId === "zone_eu" ? "European Union" : "United States"} />
-                    <Row k="Managed treasury" v={mvk?.onChain ? "Ready" : mvk ? "Registration pending" : "Not set up"} />
+                    <Row k="Treasury address" v={treasury?.address ?? "Not set up"} />
+                    <Row k="eERC registration tx" v={treasury?.registrationTxHash ?? "Pending"} />
                   </div>
                   <div className="flex items-start gap-2.5 rounded-xl border border-dashed border-border p-3.5 text-[12.5px] text-muted">
                     <Users size={15} className="mt-px flex-none text-primary" />
@@ -265,7 +370,7 @@ export function Wizard({ onDone }: { onDone: () => void }) {
 
           <div className="mt-6 flex items-center justify-between">
             <button onClick={() => setStepIdx((i) => Math.max(0, i - 1))} disabled={stepIdx === 0} className="text-[13px] font-semibold text-muted disabled:opacity-40">Back</button>
-            <Button onClick={next} disabled={!canNext} loading={busy && stepIdx === STEPS.length - 1} data-testid={stepIdx === STEPS.length - 1 ? "onboarding-finish" : "wizard-next"}>
+            <Button onClick={next} disabled={!canNext || busy !== null} loading={busy === "org" || busy === "finish"} data-testid={stepIdx === STEPS.length - 1 ? "onboarding-finish" : "wizard-next"}>
               {stepIdx === STEPS.length - 1 ? "Enter workspace" : "Continue"}
             </Button>
           </div>
@@ -275,112 +380,96 @@ export function Wizard({ onDone }: { onDone: () => void }) {
   );
 }
 
-// ----------------------------------------------------------------- KYB (on-chain)
-// The crafted verification moment. The checks animate while the REAL on-chain
-// attestation is posted (org_account, issuer-signed); the verified panel reflects
-// the on-chain decision read back from chain. Honest: no backend flag, a real tx.
-const KYB_STEPS = [
-  { label: "Business registration", icon: FileCheck2 },
-  { label: "Beneficial owners", icon: Users },
-  { label: "Sanctions / OFAC screen", icon: ScanSearch },
-  { label: "Posting decision on-chain", icon: Landmark },
-] as const;
-
-function KybVerify({
-  draft, kyb, onVerified, onError,
+// ----------------------------------------------------------------- eERC onboarding
+function EercOnboarding({
+  onboarding, busy, error, onRun,
 }: {
-  draft: OnboardingDraft;
-  kyb: OnboardingDraft["kyb"] | null;
-  onVerified: (k: NonNullable<OnboardingDraft["kyb"]>) => void;
-  onError: (m: string) => void;
+  onboarding: OnboardingStatus | null;
+  busy: boolean;
+  error: string | null;
+  onRun: () => void;
 }) {
-  const [phase, setPhase] = useState<"idle" | "verifying" | "done">(kyb?.status === "approved" ? "done" : "idle");
-  const [lit, setLit] = useState(0); // how many of the first 3 screening checks have completed
-
-  async function run() {
-    setPhase("verifying");
-    setLit(0);
-    // Play the first three screening checks on a cadence; the 4th (on-chain) stays
-    // pending until the real attestation tx resolves.
-    const timers = [0, 1, 2].map((i) => setTimeout(() => setLit(i + 1), 650 * (i + 1)));
-    try {
-      const r = await api.submitKyb(draft);
-      timers.forEach(clearTimeout);
-      setLit(3);
-      if (r.status !== "approved") {
-        setPhase("idle");
-        onError("Verification did not pass. Please check the details and try again.");
-        return;
-      }
-      onVerified(r);
-      // brief beat so the on-chain step visibly completes before the reveal
-      setTimeout(() => setPhase("done"), 360);
-    } catch {
-      timers.forEach(clearTimeout);
-      setPhase("idle");
-      onError("Couldn't post the verification on-chain. Please try again.");
-    }
-  }
-
-  if (phase === "done" && kyb?.status === "approved") {
-    const ref = kyb.txHash ? `${kyb.txHash.slice(0, 8)}…${kyb.txHash.slice(-6)}` : kyb.inquiryRef;
+  if (!onboarding) {
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: EASE }}
-        className="rounded-xl border border-success/25 bg-success/[0.06] p-4" data-testid="kyb-result"
-      >
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-success/15 text-[#1d7a52]"><BadgeCheck size={19} /></span>
-          <div className="leading-tight">
-            <div className="text-[14px] font-semibold text-[#1d7a52]">Verified {kyb.onChain ? "on-chain" : ""}</div>
-            <div className="text-[12px] text-muted">{kyb.provider}</div>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-1.5">{kyb.checks.map((c) => <Pill key={c} tone="success">{c.replace(/_/g, " ")}</Pill>)}</div>
-        {kyb.onChain ? (
-          <div className="mt-3 flex items-center gap-1.5 rounded-lg bg-[#f4f3ef] px-2.5 py-1.5 font-mono text-[11px] text-muted" title="org_account.attest_kyb reference">
-            <Landmark size={12} className="text-primary" /> org_account · ref {ref}
-          </div>
-        ) : null}
-        <div className="mt-2 text-[11.5px] text-muted">
-          Signed by the KYB issuer key and recorded in <b>org_account</b>. The console reads this decision from the chain, not from a backend flag.
-        </div>
-      </motion.div>
-    );
-  }
-
-  if (phase === "verifying") {
-    return (
-      <div className="rounded-xl border border-border bg-surface p-4" data-testid="kyb-verifying">
-        <div className="space-y-2.5">
-          {KYB_STEPS.map((s, i) => {
-            const isChain = i === 3;
-            const done = isChain ? false : i < lit;
-            const active = isChain ? lit >= 3 : i === lit;
-            return (
-              <div key={s.label} className="flex items-center gap-3">
-                <motion.span
-                  animate={{ scale: done ? 1 : 0.92 }}
-                  className={`flex h-6 w-6 flex-none items-center justify-center rounded-full ${done ? "bg-success/15 text-[#1d7a52]" : active ? "bg-primary/10 text-primary" : "bg-border/50 text-muted"}`}
-                >
-                  {done ? <Check size={13} /> : active ? <Loader2 size={13} className="animate-spin" /> : <s.icon size={12} />}
-                </motion.span>
-                <span className={`text-[13px] ${done ? "text-ink" : active ? "font-medium text-ink" : "text-muted"}`}>{s.label}</span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-3 text-[11.5px] text-muted">Recording the decision in org_account. This is a real transaction and takes a few seconds.</div>
+      <div className="rounded-xl border border-dashed border-border p-4">
+        <div className="flex items-center gap-2 text-[13px] text-muted"><ShieldCheck size={15} className="text-primary" /> Start the eERC setup for your signed-in wallet.</div>
+        <Button variant="outline" className="mt-3" loading={busy} onClick={onRun} data-testid="kyb-run"><ScanSearch size={15} /> Run eERC onboarding</Button>
+        {error ? <p className="mt-3 text-[12px] text-danger">{error}</p> : null}
       </div>
     );
   }
 
+  const activeIndex = EERC_STEPS.findIndex((s) => !stepDone(onboarding, s.key));
+  const done = onboarding.status === "complete";
+
   return (
-    <div className="rounded-xl border border-dashed border-border p-4">
-      <div className="flex items-center gap-2 text-[13px] text-muted"><ShieldCheck size={15} className="text-primary" /> We screen your registration and owners, then record the decision on-chain.</div>
-      <Button variant="outline" className="mt-3" onClick={run} data-testid="kyb-run"><ScanSearch size={15} /> Run verification</Button>
+    <div className={`rounded-xl border p-4 ${done ? "border-success/25 bg-success/[0.06]" : onboarding.status === "failed" ? "border-danger/30 bg-danger/[0.04]" : "border-border bg-surface"}`} data-testid={done ? "kyb-result" : "kyb-verifying"}>
+      <div className="flex items-center gap-2.5">
+        <span className={`flex h-9 w-9 flex-none items-center justify-center rounded-full ${done ? "bg-success/15 text-[#1d7a52]" : onboarding.status === "failed" ? "bg-danger/10 text-danger" : "bg-primary/10 text-primary"}`}>
+          {done ? <BadgeCheck size={19} /> : busy ? <Loader2 size={17} className="animate-spin" /> : <ShieldCheck size={17} />}
+        </span>
+        <div className="min-w-0 leading-tight">
+          <div className={`text-[14px] font-semibold ${done ? "text-[#1d7a52]" : onboarding.status === "failed" ? "text-danger" : "text-ink"}`}>{onboardingStatusLabel(onboarding)}</div>
+          <div className="break-all font-mono text-[11px] text-muted">{onboarding.address} · chain {onboarding.chainId}</div>
+        </div>
+      </div>
+      <div className="mt-4 space-y-2.5">
+        {EERC_STEPS.map((s, i) => {
+          const complete = stepDone(onboarding, s.key);
+          const active = !done && onboarding.status !== "failed" && (activeIndex === -1 ? i === EERC_STEPS.length - 1 : i === activeIndex);
+          const txHash = stepTx(onboarding, s.key);
+          return (
+            <div key={s.key} className="flex items-start gap-3">
+              <motion.span
+                animate={{ scale: complete ? 1 : 0.92 }}
+                className={`mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full ${complete ? "bg-success/15 text-[#1d7a52]" : active ? "bg-primary/10 text-primary" : "bg-border/50 text-muted"}`}
+              >
+                {complete ? <Check size={13} /> : active ? <Loader2 size={13} className="animate-spin" /> : <s.icon size={12} />}
+              </motion.span>
+              <div className="min-w-0 flex-1">
+                <div className={`text-[13px] ${complete ? "text-ink" : active ? "font-medium text-ink" : "text-muted"}`}>{s.label}</div>
+                {txHash ? <div className="mt-0.5 break-all font-mono text-[11px] text-muted">tx {txHash}</div> : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {error || onboarding.error ? <p className="mt-3 text-[12px] text-danger">{error ?? onboarding.error}</p> : null}
+      {done ? <div className="mt-3 text-[11.5px] text-muted">The wallet is approved for eERC private transfers. Treasury provisioning can now register the managed account.</div> : null}
     </div>
   );
+}
+
+function slugify(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-") || "workspace";
+}
+
+function onboardingStatusLabel(onboarding: OnboardingStatus | null): string {
+  if (!onboarding) return "Not started";
+  return {
+    pending_kyc: "KYC pending",
+    kyc_approved: "KYC approved",
+    allowlisted: "Wallet allowlisted",
+    gas_dripped: "Gas dripped",
+    awaiting_registration: "Awaiting registration",
+    complete: "Complete",
+    failed: "Failed",
+  }[onboarding.status];
+}
+
+function stepDone(onboarding: OnboardingStatus, key: (typeof EERC_STEPS)[number]["key"]): boolean {
+  return !!onboarding.steps[key].completedAt;
+}
+
+function stepTx(onboarding: OnboardingStatus, key: (typeof EERC_STEPS)[number]["key"]): string | null {
+  return key === "allowlist" || key === "gas" ? onboarding.steps[key].txHash : null;
 }
 
 function Step({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {

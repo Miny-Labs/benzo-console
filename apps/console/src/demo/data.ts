@@ -15,8 +15,10 @@ import type {
   LedgerEntry,
   LiveStatusResponse,
   Member,
+  OnboardingStatus,
   PaymentOrder,
   PayrollBatch,
+  ProvisionTreasuryResponse,
   TreasuryView,
   ViewingGrant,
 } from "@benzo/types";
@@ -46,6 +48,8 @@ export interface DemoDb {
   integrations: Integration[];
   invites: OrgInvite[];
   ledger: LedgerEntry[];
+  onboardingStatus: OnboardingStatus;
+  treasuryProvision: ProvisionTreasuryResponse;
   /** Private (shielded) pool total, minor units — grows when "Make private" runs. */
   privateTotal: string;
   /** Public liquid USDC balance, minor units. */
@@ -64,6 +68,7 @@ const shielded = (handle: string, spend: string) => ({
 });
 
 export function createDemoDb(): DemoDb {
+  const publicAddress = "0x9Fb2c7A11e4D3f6B8a0C15e2D9f4A7c3B6e1D8a2";
   const owner: Member = {
     id: "mem_owner",
     orgId: ORG_ID,
@@ -338,6 +343,33 @@ export function createDemoDb(): DemoDb {
     { id: "vg_1", kind: "grant", title: "Grant Thornton LLP · Q2", status: "active", amountLabel: "—", at: ISO("2026-07-01T00:00:00Z") },
   ];
 
+  const onboardingStatus: OnboardingStatus = {
+    id: "onb_demo",
+    userId: owner.id,
+    address: DEMO_OWNER_ADDRESS,
+    chainEnv: "demo",
+    chainId: 43113,
+    status: "complete",
+    error: null,
+    createdAt: ISO("2026-02-03"),
+    updatedAt: ISO("2026-02-03T00:05:00Z"),
+    mockKyc: { approvedAt: ISO("2026-02-03T00:01:00Z"), payload: { name: org.name, country: org.country }, provider: "demo" },
+    steps: {
+      kyc: { completedAt: ISO("2026-02-03T00:01:00Z"), provider: "demo" },
+      allowlist: { completedAt: ISO("2026-02-03T00:02:00Z"), result: { ok: true }, txHash: fakeHash("a110") },
+      gas: { completedAt: ISO("2026-02-03T00:03:00Z"), result: { ok: true }, txHash: fakeHash("9a5") },
+      registration: { completedAt: ISO("2026-02-03T00:04:00Z"), lastCheckedAt: ISO("2026-02-03T00:04:00Z") },
+    },
+  };
+
+  const treasuryProvision: ProvisionTreasuryResponse = {
+    address: publicAddress,
+    custody: "managed",
+    registered: true,
+    consented: true,
+    registrationTxHash: fakeHash("eerc"),
+  };
+
   return {
     session,
     live: { live: true, mode: "live", missing: [] },
@@ -352,9 +384,11 @@ export function createDemoDb(): DemoDb {
     integrations,
     invites,
     ledger,
+    onboardingStatus,
+    treasuryProvision,
     privateTotal: usd(842300),
     publicUnits: usd(48250),
-    publicAddress: "0x9Fb2c7A11e4D3f6B8a0C15e2D9f4A7c3B6e1D8a2",
+    publicAddress,
     usdcIssuer: "0x5425890298aed601595a70AB815c96711a31Bc65",
     dashboardActivity,
   };

@@ -10,6 +10,8 @@ import type {
   ApproveRequest,
   AuthSession,
   Counterparty,
+  CreateOrgRequest,
+  CreateOrgResponse,
   CreateInvoiceRequest,
   CreatePaymentRequest,
   CreatePayrollRequest,
@@ -20,9 +22,13 @@ import type {
   LedgerEntry,
   LiveStatusResponse,
   Member,
+  OnboardingStatus,
+  OnboardingStatusResponse,
   OrgSummary,
   PaymentOrder,
   PayrollBatch,
+  ProvisionTreasuryResponse,
+  StartOnboardingResponse,
   TreasuryView,
   ViewingGrant,
 } from "@benzo/types";
@@ -242,18 +248,101 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
-export interface OnboardingDraft {
-  name?: string;
-  legalName?: string;
-  country?: string;
-  entityType?: string;
-  registrationNumber?: string;
-  taxId?: string;
-  beneficialOwners?: Array<{ name: string; ownership?: string }>;
-  complianceZoneId?: string;
-  team?: Array<{ email: string; role: string }>;
-  kyb?: { status: "approved" | "pending" | "rejected" | "unverified"; provider: string; inquiryRef: string; checks: string[]; onChain: boolean; txHash?: string };
-  mvk?: { onChain: boolean; txHash?: string; mvkRoot?: string };
+export interface OnboardingStatusSubscription {
+  close: () => void;
+}
+
+export type OnboardingStatusHandler = (onboarding: OnboardingStatus) => void;
+export type OnboardingStatusErrorHandler = (error: Error) => void;
+
+function terminalOnboardingStatus(status: OnboardingStatus["status"]): boolean {
+  return status === "complete" || status === "failed";
+}
+
+function parseOnboardingEvent(data: string): OnboardingStatus | null {
+  if (!data) return null;
+  const parsed = JSON.parse(data) as OnboardingStatus | OnboardingStatusResponse;
+  return "onboarding" in parsed ? parsed.onboarding : parsed;
+}
+
+function subscribeOnboardingStatus(
+  onStatus: OnboardingStatusHandler,
+  onError?: OnboardingStatusErrorHandler,
+): OnboardingStatusSubscription {
+  let closed = false;
+  let source: EventSource | null = null;
+  let pollTimer: number | null = null;
+
+  const close = () => {
+    closed = true;
+    source?.close();
+    source = null;
+    if (pollTimer) window.clearTimeout(pollTimer);
+    pollTimer = null;
+  };
+
+  const emit = (onboarding: OnboardingStatus) => {
+    onStatus(onboarding);
+    if (terminalOnboardingStatus(onboarding.status)) close();
+  };
+
+  const poll = () => {
+    if (closed) return;
+    void realApi.onboardingStatus().then(
+      ({ onboarding }) => {
+        if (closed) return;
+        emit(onboarding);
+        if (!terminalOnboardingStatus(onboarding.status)) {
+          pollTimer = window.setTimeout(poll, 2_000);
+        }
+      },
+      (error) => {
+        if (closed) return;
+        onError?.(error instanceof Error ? error : new Error("Onboarding status polling failed."));
+        pollTimer = window.setTimeout(poll, 2_000);
+      },
+    );
+  };
+
+  const startPolling = () => {
+    source?.close();
+    source = null;
+    poll();
+  };
+
+  if (typeof EventSource === "undefined") {
+    startPolling();
+    return { close };
+  }
+
+  try {
+    source = new EventSource(apiHref("/onboarding/status/stream"), { withCredentials: true });
+    source.addEventListener("status", (event) => {
+      try {
+        const onboarding = parseOnboardingEvent((event as MessageEvent<string>).data);
+        if (onboarding) emit(onboarding);
+      } catch (error) {
+        onError?.(error instanceof Error ? error : new Error("Onboarding status stream returned malformed data."));
+      }
+    });
+    source.addEventListener("terminal", (event) => {
+      try {
+        const onboarding = parseOnboardingEvent((event as MessageEvent<string>).data);
+        if (onboarding) emit(onboarding);
+      } catch {
+        close();
+      }
+      close();
+    });
+    source.onerror = () => {
+      if (closed) return;
+      startPolling();
+    };
+  } catch {
+    startPolling();
+  }
+
+  return { close };
 }
 
 export interface SiweNonceResponse {
@@ -314,18 +403,14 @@ const realApi = {
   siweVerify: (message: string, signature: string) =>
     http<SiweVerifyResponse>("/auth/verify", { method: "POST", body: JSON.stringify({ message, signature }) }),
   logout: () => http<{ ok: true }>("/auth/logout", { method: "POST", body: "{}" }).finally(clearHostedAuthState),
-  onboarding: () => http<OnboardingDraft>("/onboarding"),
-  saveOnboarding: (patch: OnboardingDraft) =>
-    http<OnboardingDraft>("/onboarding", { method: "PATCH", body: JSON.stringify(patch) }),
-  submitKyb: (patch: OnboardingDraft) =>
-    http<NonNullable<OnboardingDraft["kyb"]>>("/onboarding/kyb", { method: "POST", body: JSON.stringify(patch) }),
-  kybStatus: () =>
-    http<{ status: "unverified" | "pending" | "approved" | "rejected"; inquiryRef: string; onChain: boolean }>("/onboarding/kyb-status"),
-  provisionTreasury: () =>
-    http<{ onChain: boolean; txHash?: string; mvkRoot?: string; treasuryAddress?: string }>("/treasury/provision", { method: "POST", body: "{}" }),
-  registerOwnerMvk: () =>
-    http<{ onChain: boolean; txHash?: string; mvkRoot?: string }>("/treasury/provision", { method: "POST", body: "{}" }),
-  finishOnboarding: () => http<AuthSession>("/onboarding/finish", { method: "POST", body: "{}" }),
+  createOrg: (body: CreateOrgRequest) =>
+    http<CreateOrgResponse>("/orgs", { method: "POST", body: JSON.stringify(body) }),
+  startOnboarding: (mockKyc?: { name?: string; country?: string }) =>
+    http<StartOnboardingResponse>("/onboarding/start", { method: "POST", body: JSON.stringify(mockKyc ? { mockKyc } : {}) }),
+  onboardingStatus: () => http<OnboardingStatusResponse>("/onboarding/status"),
+  subscribeOnboardingStatus,
+  provisionTreasury: (orgId: string) =>
+    http<ProvisionTreasuryResponse>(`/orgs/${encodeURIComponent(orgId)}/treasury`, { method: "POST", body: JSON.stringify({ consent: true }) }),
   live: () => http<LiveStatusResponse>("/live"),
   dashboard: () => http<DashboardSummary>("/dashboard"),
   treasury: () => http<TreasuryView>("/treasury"),

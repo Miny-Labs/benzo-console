@@ -7,7 +7,7 @@
 import type { Account, Counterparty } from "./accounts.js";
 import type { Approval, ApprovalPolicy } from "./approvals.js";
 import type { ComplianceZone, DisclosureTier, GrantScope, ViewingGrant } from "./compliance.js";
-import type { Money, Timestamp } from "./common.js";
+import type { EvmAddress, Money, Timestamp } from "./common.js";
 import type { Integration, IntegrationProvider } from "./integrations.js";
 import type { Invoice, LineItem } from "./invoices.js";
 import type { LedgerEntry } from "./ledger.js";
@@ -31,6 +31,67 @@ export interface AppSession {
 }
 
 export type AuthSession = AppSession;
+
+// ---- org creation / eERC onboarding --------------------------------------
+
+export interface CreateOrgRequest {
+  name: string;
+  slug: string;
+}
+
+export interface CreateOrgResponse {
+  org: OrgSummary;
+  role: "owner";
+}
+
+export type OnboardingLifecycleStatus =
+  | "pending_kyc"
+  | "kyc_approved"
+  | "allowlisted"
+  | "gas_dripped"
+  | "awaiting_registration"
+  | "complete"
+  | "failed";
+
+export interface OnboardingStatus {
+  id: string;
+  userId: string;
+  address: EvmAddress;
+  chainEnv: string;
+  chainId: number;
+  status: OnboardingLifecycleStatus;
+  error: string | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  mockKyc: {
+    approvedAt: Timestamp;
+    payload: Record<string, unknown>;
+    provider: string;
+  } | null;
+  steps: {
+    kyc: { completedAt: Timestamp | null; provider: string | null };
+    allowlist: { completedAt: Timestamp | null; result: unknown | null; txHash: string | null };
+    gas: { completedAt: Timestamp | null; result: unknown | null; txHash: string | null };
+    registration: { completedAt: Timestamp | null; lastCheckedAt: Timestamp | null };
+  };
+}
+
+export interface StartOnboardingResponse {
+  jobId: string;
+  onboarding: OnboardingStatus;
+}
+
+export interface OnboardingStatusResponse {
+  onboarding: OnboardingStatus;
+}
+
+export interface ProvisionTreasuryResponse {
+  address: EvmAddress;
+  custody: "managed";
+  registered: boolean;
+  consented: boolean;
+  registrationTxHash: string | null;
+}
 
 // ---- dashboard / treasury (read-optimized projections) --------------------
 
@@ -142,6 +203,10 @@ export interface InviteMemberRequest {
   role: Role;
 }
 
+export interface ProvisionTreasuryRequest {
+  consent: true;
+}
+
 export interface CreateViewingGrantRequest {
   auditorName: string;
   auditorPubKey: string;
@@ -184,7 +249,12 @@ export const ENDPOINTS = {
   session: { method: "GET", path: "/api/auth/me" },
   authLogout: { method: "POST", path: "/api/auth/logout" },
   orgs: { method: "GET", path: "/api/orgs" },
+  createOrg: { method: "POST", path: "/api/orgs" },
   org: { method: "GET", path: "/api/orgs/:id" },
+  onboardingStart: { method: "POST", path: "/api/onboarding/start" },
+  onboardingStatus: { method: "GET", path: "/api/onboarding/status" },
+  onboardingStatusStream: { method: "GET", path: "/api/onboarding/status/stream" },
+  provisionTreasury: { method: "POST", path: "/api/orgs/:id/treasury" },
   dashboard: { method: "GET", path: "/api/dashboard" },
   treasury: { method: "GET", path: "/api/treasury" },
   proveBalance: { method: "POST", path: "/api/treasury/prove-balance" },
