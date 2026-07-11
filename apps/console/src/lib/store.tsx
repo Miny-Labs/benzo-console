@@ -3,7 +3,7 @@
  * screens render, and exposes a refresh after any write (approve, run payroll,
  * grant). Keeps the UI a thin, typed view over the BFF.
  */
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type {
   Account,
   ApprovalPolicy,
@@ -18,7 +18,7 @@ import type {
   TreasuryView,
   ViewingGrant,
 } from "@benzo/types";
-import { api, AUTH_CHANGED_EVENT, currentAuthToken } from "./api";
+import { api, AUTH_CHANGED_EVENT, sessionWithActiveOrg } from "./api";
 import { DEMO_MODE } from "../demo/flag";
 
 interface ConsoleState {
@@ -38,6 +38,7 @@ interface ConsoleState {
   error: string | null;
   masked: boolean;
   toggleMasked: () => void;
+  setActiveOrg: (id: string) => void;
   /** Reload all read models; resolves true when treasury + dashboard loaded. */
   refresh: () => Promise<boolean>;
 }
@@ -87,9 +88,24 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [masked, setMasked] = useState<boolean>(() => localStorage.getItem("benzo.masked") === "1");
-  // In demo mode there's no SIWE token; boot straight into a fake authed session
-  // so the store loads the seeded read models from the mocked api.
-  const [authenticated, setAuthenticated] = useState(() => DEMO_MODE || !!currentAuthToken());
+  // Cookies are HttpOnly, so real mode boots optimistically and lets /auth/me
+  // decide whether there is a live session. Demo still starts authenticated.
+  const [authenticated, setAuthenticated] = useState(true);
+  const booted = useRef(false);
+
+  const clearReadModels = useCallback(() => {
+    setLiveStatus(null);
+    setDashboard(null);
+    setTreasury(null);
+    setPayments([]);
+    setPayrolls([]);
+    setInvoices([]);
+    setGrants([]);
+    setCounterparties([]);
+    setAccounts([]);
+    setMembers([]);
+    setPolicies([]);
+  }, []);
 
   const toggleMasked = useCallback(() => {
     setMasked((m) => {
@@ -100,6 +116,32 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
+    let nextSession: AuthSession;
+    try {
+      nextSession = await readModel("session", api.session);
+      setSession(nextSession);
+      setAuthenticated(true);
+    } catch (e) {
+      if (!DEMO_MODE) {
+        setAuthenticated(false);
+        setSession(null);
+        clearReadModels();
+        setError(null);
+        setLoading(false);
+        return false;
+      }
+      setError((e as Error)?.message ?? "Failed to load");
+      setLoading(false);
+      return false;
+    }
+
+    if (!nextSession.activeOrg) {
+      clearReadModels();
+      setError(null);
+      setLoading(false);
+      return true;
+    }
+
     // Load every read model independently: a single transient failure (or one
     // slow endpoint) must NOT blank every screen at once - it used to, because
     // Promise.all rejects atomically. Each slice keeps its prior value on a
@@ -108,7 +150,6 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     // Chain/API reads can degrade independently. We only surface an error if the whole load fails.
     const results = await Promise.allSettled([
       readModel("live", api.live),
-      readModel("session", api.session),
       readModel("dashboard", api.dashboard, CHAIN_READ_TIMEOUT_MS),
       readModel("treasury", api.treasury, CHAIN_READ_TIMEOUT_MS),
       readModel("payments", api.payments),
@@ -120,9 +161,8 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
       readModel("members", api.members),
       readModel("policies", api.policies),
     ]);
-    const [l, s, d, t, p, pr, inv, g, c, a, m, pol] = results;
+    const [l, d, t, p, pr, inv, g, c, a, m, pol] = results;
     if (l.status === "fulfilled") setLiveStatus(l.value);
-    if (s.status === "fulfilled") setSession(s.value);
     if (d.status === "fulfilled") setDashboard(d.value);
     if (t.status === "fulfilled") setTreasury(t.value);
     if (p.status === "fulfilled") setPayments(p.value);
@@ -137,24 +177,21 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     setError(failed.length === results.length ? (failed[0]?.reason as Error)?.message ?? "Failed to load" : null);
     setLoading(false);
     return t.status === "fulfilled" && d.status === "fulfilled"; // treasury + dashboard are critical
-  }, []);
+  }, [clearReadModels]);
+
+  // Switching workspace must reload the org-scoped read models, not just the
+  // label — otherwise the UI shows one workspace's name over another's data.
+  const setActiveOrg = useCallback((id: string) => {
+    setSession((current) => (current ? sessionWithActiveOrg(current, id) : current));
+    void refresh();
+  }, [refresh]);
 
   useEffect(() => {
     let cancelled = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
     if (!authenticated) {
       setSession(null);
-      setLiveStatus(null);
-      setDashboard(null);
-      setTreasury(null);
-      setPayments([]);
-      setPayrolls([]);
-      setInvoices([]);
-      setGrants([]);
-      setCounterparties([]);
-      setAccounts([]);
-      setMembers([]);
-      setPolicies([]);
+      clearReadModels();
       setError(null);
       setLoading(false);
       return () => {
@@ -162,11 +199,14 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
         if (retry) clearTimeout(retry);
       };
     }
-    // First load; if the treasury/dashboard lost a race with a cold-starting
-    // backend (the $0.00 bug), retry once so the dashboard isn't stuck empty.
-    void refresh().then((ok) => {
-      if (!ok && !cancelled) retry = setTimeout(() => void refresh(), 1500);
-    });
+    if (!booted.current) {
+      booted.current = true;
+      // First load; if the treasury/dashboard lost a race with a cold-starting
+      // backend (the $0.00 bug), retry once so the dashboard isn't stuck empty.
+      void refresh().then((ok) => {
+        if (!ok && !cancelled) retry = setTimeout(() => void refresh(), 1500);
+      });
+    }
     // Keep the live read models fresh while the console is open.
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && !document.hidden) void refresh();
@@ -176,17 +216,19 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
       if (retry) clearTimeout(retry);
       clearInterval(interval);
     };
-  }, [authenticated, refresh]);
+  }, [authenticated, refresh, clearReadModels]);
 
   useEffect(() => {
-    const onAuthChanged = () => setAuthenticated(!!currentAuthToken());
+    const onAuthChanged = () => {
+      if (!DEMO_MODE) setAuthenticated(false);
+    };
     window.addEventListener(AUTH_CHANGED_EVENT, onAuthChanged);
     return () => window.removeEventListener(AUTH_CHANGED_EVENT, onAuthChanged);
   }, []);
 
   return (
     <Ctx.Provider
-      value={{ session, liveStatus, dashboard, treasury, payments, payrolls, invoices, grants, counterparties, accounts, members, policies, loading, error, masked, toggleMasked, refresh }}
+      value={{ session, liveStatus, dashboard, treasury, payments, payrolls, invoices, grants, counterparties, accounts, members, policies, loading, error, masked, toggleMasked, setActiveOrg, refresh }}
     >
       {children}
     </Ctx.Provider>

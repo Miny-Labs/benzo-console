@@ -66,13 +66,19 @@ const READ = 140;
 const PROVE = 640;
 const SETTLE = 720;
 
+function activeOrg() {
+  const org = db.session.activeOrg;
+  if (!org) throw new Error("No demo org");
+  return org;
+}
+
 export const demoApi = {
   // ---- session / status ---------------------------------------------------
   session: async () => (await delay(READ), clone(db.session)),
   live: async () => (await delay(READ), clone(db.live)),
   recoveryStatus: async (): Promise<RecoveryStatus> => (await delay(READ), {
     status: "ok",
-    recovery: { bound: true, status: "healthy", custody: "non-custodial", createdAt: db.session.org.createdAt, lastSeenAt: now(), nextSteps: [] },
+    recovery: { bound: true, status: "healthy", custody: "non-custodial", createdAt: activeOrg().createdAt, lastSeenAt: now(), nextSteps: [] },
   }),
 
   // ---- read models --------------------------------------------------------
@@ -125,7 +131,7 @@ export const demoApi = {
   periodTotalAttestation: async (period: string) => {
     await delay(PROVE);
     const total = db.payrolls.filter((p) => p.status === "completed").reduce((s, p) => s + BigInt(p.total.amount), 0n).toString();
-    return { live: true, org: db.session.org.name, period, total, onChain: true, vkId: "ORGSUM", verifier: fakeVerifier(), network: NETWORK, root: fakeRoot(), proof: {}, publicInputs: [total], issuedAt: now() };
+    return { live: true, org: activeOrg().name, period, total, onChain: true, vkId: "ORGSUM", verifier: fakeVerifier(), network: NETWORK, root: fakeRoot(), proof: {}, publicInputs: [total], issuedAt: now() };
   },
 
   // ---- contractors --------------------------------------------------------
@@ -152,7 +158,7 @@ export const demoApi = {
       }
       const c: Counterparty = {
         id: `cp_imp_${randHex(6)}`,
-        orgId: db.session.org.id,
+        orgId: activeOrg().id,
         name,
         type: "contractor",
         status: "pending_screening",
@@ -185,7 +191,7 @@ export const demoApi = {
     const overThreshold = BigInt(body.amount.amount) > BigInt(usd(10000));
     const po: PaymentOrder = {
       id: `po_${randHex(6)}`,
-      orgId: db.session.org.id,
+      orgId: activeOrg().id,
       type: body.type,
       status: overThreshold ? "needs_approval" : "confirmed",
       amount: { amount: body.amount.amount, assetCode: "USDC" },
@@ -225,7 +231,7 @@ export const demoApi = {
       return { counterpartyId: l.counterpartyId, amount: c?.payRate?.amount ?? "0", rate: c?.payRate?.amount ?? "0", status: "pending" as const };
     });
     const total = lines.reduce((s, l) => s + BigInt(l.amount), 0n).toString();
-    const batch: PayrollBatch = { id: `pr_${randHex(6)}`, orgId: db.session.org.id, period: body.period, source: body.source, status: "needs_approval", lines, total: { amount: total, assetCode: "USDC" }, createdAt: now() };
+    const batch: PayrollBatch = { id: `pr_${randHex(6)}`, orgId: activeOrg().id, period: body.period, source: body.source, status: "needs_approval", lines, total: { amount: total, assetCode: "USDC" }, createdAt: now() };
     db.payrolls.unshift(batch);
     return clone(batch);
   },
@@ -279,7 +285,7 @@ export const demoApi = {
   createInvoice: async (body: { counterpartyId: string; number?: string; lineItems: Invoice["lineItems"]; assetCode: string; dueDate?: string; externalId?: string; counterpartyName?: string }) => {
     await delay(READ);
     const total = body.lineItems.reduce((s, li) => s + BigInt(li.unitAmount) * BigInt(li.quantity), 0n).toString();
-    const inv: Invoice = { id: `inv_${randHex(6)}`, orgId: db.session.org.id, number: body.number ?? `INV-${randHex(4)}`, counterpartyId: body.counterpartyId, lineItems: body.lineItems, total: { amount: total, assetCode: body.assetCode }, status: "open", dueDate: body.dueDate, paymentOrderIds: [], externalId: body.externalId, createdAt: now() };
+    const inv: Invoice = { id: `inv_${randHex(6)}`, orgId: activeOrg().id, number: body.number ?? `INV-${randHex(4)}`, counterpartyId: body.counterpartyId, lineItems: body.lineItems, total: { amount: total, assetCode: body.assetCode }, status: "open", dueDate: body.dueDate, paymentOrderIds: [], externalId: body.externalId, createdAt: now() };
     db.invoices.unshift(inv);
     return clone(inv);
   },
@@ -288,7 +294,7 @@ export const demoApi = {
     const inv = byId(db.invoices, id);
     if (!inv) throw new Error("not found");
     inv.status = "paid";
-    const payment: PaymentOrder = { id: `po_${randHex(6)}`, orgId: db.session.org.id, type: "invoice_payment", status: "confirmed", amount: inv.total, fromAccountId: "acct_operating", toCounterpartyId: inv.counterpartyId, memo: inv.number, privacy: { amountHidden: true, counterpartyHidden: true, visibleTo: ["mem_owner"] }, settlement: { onChain: true, txHash: fakeTx(), mode: "onchain" }, createdByMemberId: "mem_owner", createdAt: now(), updatedAt: now() };
+    const payment: PaymentOrder = { id: `po_${randHex(6)}`, orgId: activeOrg().id, type: "invoice_payment", status: "confirmed", amount: inv.total, fromAccountId: "acct_operating", toCounterpartyId: inv.counterpartyId, memo: inv.number, privacy: { amountHidden: true, counterpartyHidden: true, visibleTo: ["mem_owner"] }, settlement: { onChain: true, txHash: fakeTx(), mode: "onchain" }, createdByMemberId: "mem_owner", createdAt: now(), updatedAt: now() };
     inv.paymentOrderIds.push(payment.id);
     db.payments.unshift(payment);
     return { invoice: clone(inv), payment: clone(payment) };
@@ -302,7 +308,7 @@ export const demoApi = {
   // ---- grants -------------------------------------------------------------
   createGrant: async (body: { auditorName: string; auditorPubKey: string; tier: ViewingGrant["tier"]; scope: ViewingGrant["scope"]; expiry: string }) => {
     await delay(READ);
-    const grant: ViewingGrant = { id: `vg_${randHex(6)}`, orgId: db.session.org.id, auditorName: body.auditorName, auditorPubKey: body.auditorPubKey, tier: body.tier, scope: body.scope, onChainKeyHash: fakeTx(), expiry: body.expiry, status: "active", portalUrl: `https://portal.benzo.space/g/${randHex(6)}`, createdAt: now() };
+    const grant: ViewingGrant = { id: `vg_${randHex(6)}`, orgId: activeOrg().id, auditorName: body.auditorName, auditorPubKey: body.auditorPubKey, tier: body.tier, scope: body.scope, onChainKeyHash: fakeTx(), expiry: body.expiry, status: "active", portalUrl: `https://portal.benzo.space/g/${randHex(6)}`, createdAt: now() };
     db.grants.unshift(grant);
     return clone(grant);
   },
@@ -323,9 +329,9 @@ export const demoApi = {
     const envelopes = db.ledger.map((e, i) => ({ id: e.id, orgId: e.orgId, type: e.sourceType, subjectId: e.sourceId ?? e.id, schema: "benzo.event.v1", occurredAt: e.postedAt, publicMeta: { kind: e.sourceType }, ciphertext: randHex(48), iv: randHex(24), tag: randHex(16), aadHash: fakeTx(), payloadHash: fakeTx(), prevHash: i === 0 ? "0x0" : fakeTx(), hash: e.hash ?? fakeTx() }));
     return {
       packet: {
-        orgId: db.session.org.id,
+        orgId: activeOrg().id,
         scope: { label: "All private events" },
-        anchor: { orgId: db.session.org.id, eventCount: envelopes.length, headHash, merkleRoot, anchoredAt: now() },
+        anchor: { orgId: activeOrg().id, eventCount: envelopes.length, headHash, merkleRoot, anchoredAt: now() },
         envelopes,
         inclusionProofs: envelopes.map((e, i) => ({ eventHash: e.hash, siblings: [fakeTx(), fakeTx()], index: i })),
         issuedAt: now(),
@@ -364,7 +370,7 @@ export const demoApi = {
     return clone(inv);
   },
   bulkInvite: async () => (await delay(READ), { created: 0, errors: [], invites: [] }),
-  acceptInvite: async (body: { token: string; name?: string }) => (await delay(READ), { ok: true, orgName: db.session.org.name, kind: "member" as const, orgId: db.session.org.id }),
+  acceptInvite: async (body: { token: string; name?: string }) => (await delay(READ), { ok: true, orgName: activeOrg().name, kind: "member" as const, orgId: activeOrg().id }),
 
   // ---- policies (empty in the seed, but keep the surface complete) --------
   updatePolicy: async (id: string) => {
@@ -382,6 +388,8 @@ export const demoApi = {
   provisionTreasury: async () => ({ onChain: true, txHash: fakeTx(), mvkRoot: fakeRoot(), treasuryAddress: db.publicAddress }),
   registerOwnerMvk: async () => ({ onChain: true, txHash: fakeTx(), mvkRoot: fakeRoot() }),
   finishOnboarding: async () => clone(db.session),
+  orgs: async () => ({ orgs: clone(db.session.orgs) }),
   siweNonce: async () => ({ nonce: randHex(16) }),
-  siweVerify: async () => ({ token: `demo.${randHex(24)}`, tokenType: "Bearer" as const, session: clone(db.session) }),
+  siweVerify: async () => ({ user: clone(db.session.user) }),
+  logout: async () => ({ ok: true as const }),
 };

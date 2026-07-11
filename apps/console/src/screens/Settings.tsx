@@ -52,7 +52,7 @@ export function SettingsScreen() {
     api.recoveryStatus().then((r) => setRecovery(r.recovery)).catch(() => setRecovery(null));
   }, []);
 
-  const org = session?.org;
+  const org = session?.activeOrg;
 
   return (
     <Screen>
@@ -225,7 +225,7 @@ function TeamCard() {
           </thead>
           <tbody>
             {members.map((m) => {
-              const you = !!session?.member && m.id === session.member.id;
+              const you = !!session?.user.address && m.signerAddress?.toLowerCase() === session.user.address.toLowerCase();
               return (
                 <Tr key={m.id}>
                   <Td>
@@ -359,7 +359,7 @@ function ApprovalPolicyCard() {
   function createDefault() {
     setLocalPolicy({
       id: `pol_${Date.now()}`,
-      orgId: session?.org.id ?? "org",
+      orgId: session?.activeOrg?.id ?? "org",
       name: "Default policy",
       conditions: [{ field: "amount", operator: "gte", value: usdcToMinor("10000") }],
       steps: [{ role: "approver", mode: "any", minApprovers: 2 }],

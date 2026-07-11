@@ -5,6 +5,7 @@
  */
 import type {
   Account,
+  AppUser,
   ApprovalPolicy,
   ApproveRequest,
   AuthSession,
@@ -19,6 +20,7 @@ import type {
   LedgerEntry,
   LiveStatusResponse,
   Member,
+  OrgSummary,
   PaymentOrder,
   PayrollBatch,
   TreasuryView,
@@ -152,49 +154,19 @@ export function apiHref(path: string): string {
   return `${apiBaseUrl}${suffix}`;
 }
 
-const AUTH_TOKEN_KEY = "benzo.console.siweToken";
-const AUTH_IDENTITY_KEY = "benzo.console.siweIdentity";
+export const ACTIVE_ORG_KEY = "benzo.activeOrg";
 const LEGACY_GOOGLE_TOKEN_KEY = "benzo.console.googleCredential";
 const LEGACY_GOOGLE_IDENTITY_KEY = "benzo.console.identityKey";
+const LEGACY_AUTH_TOKEN_KEY = "benzo.console.siweToken";
+const LEGACY_AUTH_IDENTITY_KEY = "benzo.console.siweIdentity";
 const IDEMPOTENCY_PREFIX = "benzo.idempotency.console.v1:";
 export const AUTH_REQUIRED_EVENT = "benzo:console-auth-required";
 export const AUTH_CHANGED_EVENT = "benzo:console-auth-changed";
 
-function b64urlJson(seg: string): Record<string, unknown> | null {
-  try {
-    return JSON.parse(atob(seg.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(seg.length / 4) * 4, "="))) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-function identityKeyFromCredential(credential: string): string {
-  const payload = b64urlJson(credential);
-  const address = typeof payload?.address === "string" ? payload.address.toLowerCase() : "unknown";
-  const chainId = typeof payload?.chainId === "number" || typeof payload?.chainId === "string" ? String(payload.chainId) : "unknown";
-  let h = 0x811c9dc5;
-  for (const ch of `console|siwe|${chainId}|${address}`) {
-    h ^= ch.charCodeAt(0);
-    h = Math.imul(h, 0x01000193);
-  }
-  return `e${(h >>> 0).toString(16).padStart(8, "0")}`;
-}
-
-export function storeAuthToken(token: string, identity?: { address: string; chainId: number }): void {
-  const identityPayload = identity ? btoa(JSON.stringify(identity)) : token;
-  const nextIdentity = identityKeyFromCredential(identityPayload);
-  const prevIdentity = localStorage.getItem(AUTH_IDENTITY_KEY);
-  if (prevIdentity && prevIdentity !== nextIdentity) localStorage.removeItem("benzo.console.onboarded");
-  localStorage.setItem(AUTH_IDENTITY_KEY, nextIdentity);
-  localStorage.setItem(AUTH_TOKEN_KEY, token);
-  localStorage.removeItem(LEGACY_GOOGLE_TOKEN_KEY);
-  localStorage.removeItem(LEGACY_GOOGLE_IDENTITY_KEY);
-  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
-}
-
 export function clearHostedAuthState(): void {
-  localStorage.removeItem(AUTH_TOKEN_KEY);
-  localStorage.removeItem(AUTH_IDENTITY_KEY);
+  localStorage.removeItem(ACTIVE_ORG_KEY);
+  localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
+  localStorage.removeItem(LEGACY_AUTH_IDENTITY_KEY);
   localStorage.removeItem(LEGACY_GOOGLE_TOKEN_KEY);
   localStorage.removeItem(LEGACY_GOOGLE_IDENTITY_KEY);
   localStorage.removeItem("benzo.console.onboarded");
@@ -204,10 +176,6 @@ export function clearHostedAuthState(): void {
 export function notifyAuthRequired(): void {
   clearHostedAuthState();
   window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT));
-}
-
-export function currentAuthToken(): string | null {
-  return localStorage.getItem(AUTH_TOKEN_KEY) ?? localStorage.getItem(LEGACY_GOOGLE_TOKEN_KEY);
 }
 
 function shortHash(input: string): string {
@@ -240,18 +208,15 @@ function idempotencyKey(path: string, init?: RequestInit): { key: string; clear:
   return { key, clear: () => localStorage.removeItem(storageKey) };
 }
 
-function prepareApiRequest(path: string, init?: RequestInit): { url: string; init: RequestInit; clearIdempotency?: () => void; authToken: string | null } {
+function prepareApiRequest(path: string, init?: RequestInit): { url: string; init: RequestInit; clearIdempotency?: () => void } {
   const headers = new Headers(init?.headers);
   headers.set("content-type", headers.get("content-type") ?? "application/json");
-  const authToken = currentAuthToken();
-  if (authToken) headers.set("authorization", `Bearer ${authToken}`);
   const idem = idempotencyKey(path, init);
   if (idem) headers.set("Idempotency-Key", idem.key);
   return {
     url: apiHref(path),
     init: { credentials: init?.credentials ?? "include", ...init, headers },
     clearIdempotency: idem?.clear,
-    authToken,
   };
 }
 
@@ -268,12 +233,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
       } catch {
         /* ignore */
       }
-      if (
-        res.status === 401 &&
-        path !== "/auth/siwe/verify" &&
-        prepared.authToken &&
-        currentAuthToken() === prepared.authToken
-      ) notifyAuthRequired();
+      if (res.status === 401 && path !== "/auth/verify") notifyAuthRequired();
       throw new Error(detail);
     }
     return (await res.json()) as T;
@@ -298,23 +258,31 @@ export interface OnboardingDraft {
 
 export interface SiweNonceResponse {
   nonce: string;
-  message?: string;
-  expiresAt?: string;
-}
-
-export interface SiweVerifyRequest {
-  address: string;
-  chainId: number;
-  message: string;
-  signature: string;
-  nonce?: string;
+  expiresAt: string;
 }
 
 export interface SiweVerifyResponse {
-  token: string;
-  tokenType?: "Bearer";
-  expiresAt?: string;
-  session?: AuthSession;
+  user: AppUser;
+}
+
+interface OrgsResponse {
+  orgs: OrgSummary[];
+}
+
+export function selectActiveOrg(orgs: OrgSummary[], id = localStorage.getItem(ACTIVE_ORG_KEY)): OrgSummary | null {
+  if (orgs.length === 0) return null;
+  return orgs.find((org) => org.id === id) ?? orgs[0] ?? null;
+}
+
+export function buildAppSession(user: AppUser, orgs: OrgSummary[]): AuthSession {
+  const activeOrg = selectActiveOrg(orgs);
+  return { user, orgs, activeOrg, role: activeOrg?.role ?? null };
+}
+
+export function sessionWithActiveOrg(session: AuthSession, id: string): AuthSession {
+  localStorage.setItem(ACTIVE_ORG_KEY, id);
+  const activeOrg = selectActiveOrg(session.orgs, id);
+  return { ...session, activeOrg, role: activeOrg?.role ?? null };
 }
 
 interface PublicBalanceResponse {
@@ -334,12 +302,18 @@ function normalizePublicBalance(r: PublicBalanceResponse): { units: string; addr
 }
 
 const realApi = {
-  session: () => http<AuthSession>("/session"),
+  session: async () => {
+    const { user } = await http<SiweVerifyResponse>("/auth/me");
+    const { orgs } = await http<OrgsResponse>("/orgs");
+    return buildAppSession(user, orgs);
+  },
+  orgs: () => http<OrgsResponse>("/orgs"),
   recoveryStatus: () => http<RecoveryStatus>("/recovery/status"),
-  siweNonce: (address: string, chainId: number) =>
-    http<SiweNonceResponse>("/auth/siwe/nonce", { method: "POST", body: JSON.stringify({ address, chainId }) }),
-  siweVerify: (body: SiweVerifyRequest) =>
-    http<SiweVerifyResponse>("/auth/siwe/verify", { method: "POST", body: JSON.stringify(body) }),
+  siweNonce: (address: string) =>
+    http<SiweNonceResponse>(`/auth/nonce?address=${encodeURIComponent(address)}`),
+  siweVerify: (message: string, signature: string) =>
+    http<SiweVerifyResponse>("/auth/verify", { method: "POST", body: JSON.stringify({ message, signature }) }),
+  logout: () => http<{ ok: true }>("/auth/logout", { method: "POST", body: "{}" }).finally(clearHostedAuthState),
   onboarding: () => http<OnboardingDraft>("/onboarding"),
   saveOnboarding: (patch: OnboardingDraft) =>
     http<OnboardingDraft>("/onboarding", { method: "PATCH", body: JSON.stringify(patch) }),

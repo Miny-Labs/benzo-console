@@ -20,10 +20,10 @@ import type {
   TreasuryView,
   ViewingGrant,
 } from "@benzo/types";
-import { ROLE_PERMISSIONS } from "@benzo/types";
 import type { OrgInvite } from "../lib/api";
 
 const ORG_ID = "org_meridian";
+const DEMO_OWNER_ADDRESS = "0x7A58c0Be72BE218B41C608b7Fe7C5bB630736C71";
 
 /** dollars (with cents) -> USDC minor units (6dp) string. */
 export function usd(dollars: number): string {
@@ -71,6 +71,7 @@ export function createDemoDb(): DemoDb {
     name: "Jordan Ellis",
     role: "owner",
     status: "active",
+    signerAddress: DEMO_OWNER_ADDRESS,
     createdAt: ISO("2026-02-03"),
   };
   const members: Member[] = [
@@ -80,19 +81,24 @@ export function createDemoDb(): DemoDb {
     { id: "mem_admin", orgId: ORG_ID, email: "robin@meridianlabs.xyz", name: "Robin Chase", role: "admin", status: "active", createdAt: ISO("2026-03-01") },
   ];
 
+  const org: AuthSession["orgs"][number] = {
+    id: ORG_ID,
+    name: "Meridian Labs",
+    slug: "meridian-labs",
+    role: "owner",
+    legalName: "Meridian Labs, Inc.",
+    country: "US",
+    kybStatus: "approved",
+    complianceZoneId: "us",
+    baseAssetCode: "USDC",
+    createdAt: ISO("2026-02-03"),
+  };
+
   const session: AuthSession = {
-    member: owner,
-    org: {
-      id: ORG_ID,
-      name: "Meridian Labs",
-      legalName: "Meridian Labs, Inc.",
-      country: "US",
-      kybStatus: "approved",
-      complianceZoneId: "us",
-      baseAssetCode: "USDC",
-      createdAt: ISO("2026-02-03"),
-    },
-    permissions: [...ROLE_PERMISSIONS.owner],
+    user: { id: owner.id, address: DEMO_OWNER_ADDRESS, roles: ["owner"] },
+    orgs: [org],
+    activeOrg: org,
+    role: "owner",
   };
 
   const accounts: Account[] = [

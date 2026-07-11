@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { BadgeCheck, Building2, Check, FileCheck2, Landmark, Loader2, ScanSearch, ShieldCheck, Sparkles, Users, Wallet } from "lucide-react";
 import { useAccount, useConnect, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
-import { api, currentAuthToken, storeAuthToken, type OnboardingDraft, type SiweNonceResponse } from "../lib/api";
+import { api, type OnboardingDraft, type SiweNonceResponse } from "../lib/api";
 import { friendlyError } from "../lib/format";
 import { CHAIN_ID, NETWORK_LABEL } from "../lib/network";
 import { Logo } from "../ui/Logo";
@@ -32,15 +32,13 @@ const STEPS = [
 type StepKey = (typeof STEPS)[number]["key"];
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
-  const [authed, setAuthed] = useState(false);
-  return authed ? <Wizard onDone={onDone} /> : <AuthShell onAuthed={() => setAuthed(true)} />;
+  return <AuthShell onAuthed={onDone} />;
 }
 
 // ----------------------------------------------------------------- auth / SIWE
 // The console session is SIWE-backed. The wallet signs only an operator login
 // challenge; the org treasury remains server-custodied by services/api.
 function buildSiweMessage(address: string, challenge: SiweNonceResponse): string {
-  if (challenge.message) return challenge.message;
   return [
     `${window.location.host} wants you to sign in with your Ethereum account:`,
     address,
@@ -62,17 +60,12 @@ function shortAddress(address?: string): string {
 function AuthShell({ onAuthed }: { onAuthed: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [hasStoredSession, setHasStoredSession] = useState(() => !!currentAuthToken());
   const { address, chainId, isConnected } = useAccount();
   const { connectors, connectAsync } = useConnect();
   const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
   const { switchChainAsync } = useSwitchChain();
   const wrongChain = isConnected && chainId !== CHAIN_ID;
-
-  useEffect(() => {
-    setHasStoredSession(!!currentAuthToken());
-  }, []);
 
   async function withSiwe() {
     setBusy("siwe");
@@ -91,27 +84,13 @@ function AuthShell({ onAuthed }: { onAuthed: () => void }) {
       if (activeChainId !== CHAIN_ID) {
         await switchChainAsync({ chainId: CHAIN_ID });
       }
-      const challenge = await api.siweNonce(activeAddress, CHAIN_ID);
+      const challenge = await api.siweNonce(activeAddress);
       const message = buildSiweMessage(activeAddress, challenge);
       const signature = await signMessageAsync({ message });
-      const verified = await api.siweVerify({ address: activeAddress, chainId: CHAIN_ID, message, signature, nonce: challenge.nonce });
-      if (!verified.token) throw new Error("The API did not return a session token.");
-      storeAuthToken(verified.token, { address: activeAddress, chainId: CHAIN_ID });
+      await api.siweVerify(message, signature);
       onAuthed();
     } catch (e) {
       setErr(friendlyError(e, "Sign-in failed. Check your wallet and try again."));
-      setBusy(null);
-    }
-  }
-
-  async function withStoredSession() {
-    setBusy("stored");
-    setErr(null);
-    try {
-      await api.session();
-      onAuthed();
-    } catch (e) {
-      setErr(friendlyError(e, "Sign in again to continue."));
       setBusy(null);
     }
   }
@@ -125,11 +104,6 @@ function AuthShell({ onAuthed }: { onAuthed: () => void }) {
         <h1 className="font-display text-2xl">Pay your team privately</h1>
         <p className="mt-1.5 text-[13.5px] text-muted">Run payroll and pay vendors on Avalanche. Amounts and recipients stay confidential through eERC.</p>
         <div className="mt-6 space-y-2.5">
-          {hasStoredSession ? (
-            <Button className="w-full" variant="outline" size="md" loading={busy === "stored"} onClick={withStoredSession} data-testid="auth-stored">
-              Continue with signed-in wallet
-            </Button>
-          ) : null}
           {isConnected ? (
             <div className="flex items-center justify-between rounded-[10px] border border-border bg-canvas px-3.5 py-2 text-[12.5px] text-muted" data-testid="auth-wallet-connected">
               <span>{shortAddress(address)} · {wrongChain ? "wrong network" : NETWORK_LABEL}</span>
@@ -156,7 +130,7 @@ function AuthShell({ onAuthed }: { onAuthed: () => void }) {
 }
 
 // ----------------------------------------------------------------- wizard
-function Wizard({ onDone }: { onDone: () => void }) {
+export function Wizard({ onDone }: { onDone: () => void }) {
   const toast = useToast();
   const [stepIdx, setStepIdx] = useState(0);
   const [draft, setDraft] = useState<OnboardingDraft>({ country: "US", entityType: "C-Corp", complianceZoneId: "zone_us" });
