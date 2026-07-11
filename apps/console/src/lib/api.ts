@@ -27,7 +27,10 @@ import type {
   OrgSummary,
   PaymentOrder,
   PayrollBatch,
+  DepositToTreasuryRequest,
+  DepositToTreasuryResponse,
   ProvisionTreasuryResponse,
+  TreasuryDepositsResponse,
   StartOnboardingResponse,
   TreasuryView,
   ViewingGrant,
@@ -193,7 +196,7 @@ function shortHash(input: string): string {
   return (h >>> 0).toString(16).padStart(8, "0");
 }
 
-function randomIdempotencyKey(): string {
+export function randomIdempotencyKey(): string {
   const uuid = crypto.randomUUID?.();
   if (uuid) return `idem_${uuid}`;
   const bytes = new Uint8Array(16);
@@ -374,22 +377,6 @@ export function sessionWithActiveOrg(session: AuthSession, id: string): AuthSess
   return { ...session, activeOrg, role: activeOrg?.role ?? null };
 }
 
-interface PublicBalanceResponse {
-  units?: string;
-  // Legacy Stellar-era field. Kept ONLY as a defensive read fallback so a
-  // balance never silently renders as $0 if a backend build still emits it;
-  // not part of the going-forward contract.
-  stroops?: string;
-  address: string;
-  asset: string;
-  issuer: string;
-  live: boolean;
-}
-
-function normalizePublicBalance(r: PublicBalanceResponse): { units: string; address: string; asset: string; issuer: string; live: boolean } {
-  return { units: r.units ?? r.stroops ?? "0", address: r.address, asset: r.asset, issuer: r.issuer, live: r.live };
-}
-
 const realApi = {
   session: async () => {
     const { user } = await http<SiweVerifyResponse>("/auth/me");
@@ -411,17 +398,19 @@ const realApi = {
   subscribeOnboardingStatus,
   provisionTreasury: (orgId: string) =>
     http<ProvisionTreasuryResponse>(`/orgs/${encodeURIComponent(orgId)}/treasury`, { method: "POST", body: JSON.stringify({ consent: true }) }),
+  orgTreasury: (orgId: string) =>
+    http<TreasuryView>(`/orgs/${encodeURIComponent(orgId)}/treasury`),
+  depositToTreasury: (orgId: string, body: DepositToTreasuryRequest) =>
+    http<DepositToTreasuryResponse>(`/orgs/${encodeURIComponent(orgId)}/treasury/deposit`, { method: "POST", body: JSON.stringify(body) }),
+  treasuryDeposits: (orgId: string, query: { limit?: number; before?: string } = {}) => {
+    const params = new URLSearchParams();
+    if (query.limit != null) params.set("limit", String(query.limit));
+    if (query.before) params.set("before", query.before);
+    const qs = params.toString();
+    return http<TreasuryDepositsResponse>(`/orgs/${encodeURIComponent(orgId)}/treasury/deposits${qs ? `?${qs}` : ""}`);
+  },
   live: () => http<LiveStatusResponse>("/live"),
   dashboard: () => http<DashboardSummary>("/dashboard"),
-  treasury: () => http<TreasuryView>("/treasury"),
-  // Prove reserves: treasury >= a chosen floor on-chain (ORGBAL); returns an on-chain ref.
-  proveBalance: (min: string) =>
-    http<{ holds: boolean; onChain: boolean; minUnits: string; ref?: OnChainRef }>("/treasury/prove-balance", { method: "POST", body: JSON.stringify({ min }) }),
-  proveTotal: () =>
-    http<{ total: string; onChain: boolean; ref?: OnChainRef }>("/treasury/prove-total", { method: "POST", body: "{}" }),
-  // True solvency: prove treasury >= Σ(pending payroll + open invoices), both hidden.
-  proveSolvency: () =>
-    http<{ solvent: boolean; onChain: boolean; liabilities: string; ref?: OnChainRef }>("/treasury/prove-solvency", { method: "POST", body: "{}" }),
   // KYB-as-ZK credential (Z7): prove verified business + jurisdiction + tier on-chain (KYB), docs hidden.
   proveKyb: () =>
     http<{ ok: boolean; onChain: boolean; jurisdiction: string; tier: string; ref?: OnChainRef }>("/compliance/kyb-credential", { method: "POST", body: "{}" }),
@@ -432,21 +421,6 @@ const realApi = {
       vkId?: string; verifier?: string; network?: string; root?: string;
       proof?: unknown; publicInputs?: string[]; issuedAt?: string;
     }>("/records/period-total", { method: "POST", body: JSON.stringify({ period }) }),
-  // "Make private" (shield public -> pool). amount in USDC (human).
-  fundTreasury: (amount: string) =>
-    http<{ onChain: boolean; txHash?: string; error?: string }>("/treasury/fund", { method: "POST", body: JSON.stringify({ amount }) }),
-  // Two-balance model. Public = liquid, unshielded USDC (what external wallets see).
-  // The org's M-of-N shielded pool is api.treasury(). units are 6-decimal USDC.
-  treasuryPublicBalance: () =>
-    http<PublicBalanceResponse>("/treasury/public-balance").then(normalizePublicBalance),
-  // Receive: address + asset/issuer for a Receive QR (inbound lands in Public).
-  treasuryReceive: () =>
-    http<{ address: string; asset: string; issuer: string; live: boolean }>("/treasury/receive"),
-  // "Send to a wallet": real on-chain USDC transfer from Public to an external
-  // EVM address. amount in USDC (human). Friendly balance errors in `error`.
-  treasurySendPublic: (to: string, amount: string) =>
-    http<{ txHash?: string; onChain: boolean; error?: string }>("/treasury/send-public", { method: "POST", body: JSON.stringify({ to, amount }) }),
-
   accounts: () => http<Account[]>("/accounts"),
   members: () => http<Member[]>("/members"),
   counterparties: () => http<Counterparty[]>("/counterparties"),

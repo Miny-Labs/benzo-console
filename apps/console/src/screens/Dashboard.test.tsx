@@ -22,7 +22,12 @@ describe("Dashboard", () => {
         recentActivity: [],
       },
       treasury: {
-        totalHidden: { amount: "1230000000", assetCode: "USDC" },
+        address: "0xtreasury",
+        custody: "managed",
+        registered: true,
+        consented: true,
+        custodyConsent: { consented: true, consentedAt: "2026-07-01T00:00:00.000Z", consentedBy: "usr_1" },
+        balances: [{ token: "usdc", tokenId: "avax-usdc", symbol: "USDC", decimals: 6, amount: "1230000000" }],
       },
       payments: [],
       members: [],
@@ -51,7 +56,14 @@ describe("Dashboard", () => {
     // Everything is done except the approval policy → "1 step remaining".
     stateRef.current = {
       ...stateRef.current,
-      treasury: { totalHidden: { amount: "1230000000", assetCode: "USDC" } },
+      treasury: {
+        address: "0xtreasury",
+        custody: "managed",
+        registered: true,
+        consented: true,
+        custodyConsent: { consented: true, consentedAt: "2026-07-01T00:00:00.000Z", consentedBy: "usr_1" },
+        balances: [{ token: "usdc", tokenId: "avax-usdc", symbol: "USDC", decimals: 6, amount: "1230000000" }],
+      },
       members: [
         { id: "m_owner", role: "owner", status: "active" },
         { id: "m_approver", role: "approver", status: "active" },

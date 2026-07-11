@@ -141,6 +141,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return true;
     }
+    const activeOrgId = nextSession.activeOrg.id;
 
     // Load every read model independently: a single transient failure (or one
     // slow endpoint) must NOT blank every screen at once - it used to, because
@@ -151,7 +152,7 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     const results = await Promise.allSettled([
       readModel("live", api.live),
       readModel("dashboard", api.dashboard, CHAIN_READ_TIMEOUT_MS),
-      readModel("treasury", api.treasury, CHAIN_READ_TIMEOUT_MS),
+      readModel("treasury", () => api.orgTreasury(activeOrgId), CHAIN_READ_TIMEOUT_MS),
       readModel("payments", api.payments),
       readModel("payrolls", api.payrolls),
       readModel("invoices", api.invoices),

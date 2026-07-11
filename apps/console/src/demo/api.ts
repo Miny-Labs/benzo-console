@@ -9,6 +9,8 @@
 import type {
   Counterparty,
   CreateOrgResponse,
+  DepositToTreasuryRequest,
+  DepositToTreasuryResponse,
   Invoice,
   OnboardingStatus,
   OnboardingStatusResponse,
@@ -16,6 +18,7 @@ import type {
   PayrollBatch,
   ProvisionTreasuryResponse,
   StartOnboardingResponse,
+  TreasuryDepositsResponse,
   ViewingGrant,
 } from "@benzo/types";
 import type {
@@ -122,7 +125,7 @@ export const demoApi = {
 
   // ---- read models --------------------------------------------------------
   dashboard: async () => (await delay(READ), dashboardSummary(db)),
-  treasury: async () => (await delay(READ), treasuryView(db)),
+  orgTreasury: async (_orgId: string) => (await delay(READ), treasuryView(db)),
   accounts: async () => (await delay(READ), clone(db.accounts)),
   members: async () => (await delay(READ), clone(db.members)),
   counterparties: async () => (await delay(READ), clone(db.counterparties)),
@@ -136,35 +139,33 @@ export const demoApi = {
   ledger: async () => (await delay(READ), clone(db.ledger)),
   proofReceipts: async () => (await delay(READ), []),
 
-  // ---- treasury: two-balance model + prove flows --------------------------
-  treasuryPublicBalance: async () => (await delay(READ), { units: db.publicUnits, address: db.publicAddress, asset: "USDC", issuer: db.usdcIssuer, live: true }),
-  treasuryReceive: async () => (await delay(READ), { address: db.publicAddress, asset: "USDC", issuer: db.usdcIssuer, live: true }),
-  treasurySendPublic: async (_to: string, amount: string) => {
+  // ---- treasury -----------------------------------------------------------
+  depositToTreasury: async (_orgId: string, body: DepositToTreasuryRequest): Promise<DepositToTreasuryResponse> => {
     await delay(SETTLE);
-    const minor = usd(Number(amount));
-    db.publicUnits = (BigInt(db.publicUnits) - BigInt(minor)).toString();
-    return { onChain: true, txHash: fakeTx() };
+    const txHash = fakeTx();
+    if (body.token === "usdc") db.privateTotal = (BigInt(db.privateTotal) + BigInt(body.amount)).toString();
+    const deposit = {
+      id: `dep_${randHex(6)}`,
+      kind: "direct" as const,
+      amount: body.amount,
+      token: body.token,
+      status: "credited" as const,
+      txHash,
+      sourceChain: "avalanche-fuji",
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    db.treasuryDeposits.unshift(deposit);
+    return { amount: body.amount, source: "direct", status: "confirmed", token: body.token, tokenId: `avalanche-fuji:${body.token}`, txHash };
   },
-  // "Make private": public -> shielded pool. Grows the private total, shrinks public.
-  fundTreasury: async (amount: string) => {
-    await delay(SETTLE);
-    const minor = usd(Number(amount));
-    db.publicUnits = (BigInt(db.publicUnits) - BigInt(minor)).toString();
-    db.privateTotal = (BigInt(db.privateTotal) + BigInt(minor)).toString();
-    return { onChain: true, txHash: fakeTx() };
-  },
-  proveBalance: async (min: string) => {
-    await delay(PROVE);
-    return { holds: BigInt(db.privateTotal) >= BigInt(min || "0"), onChain: true, minUnits: min, ref: fakeRef("Reserves proof", "ORGBAL", [{ k: "Floor", v: min }]) };
-  },
-  proveTotal: async () => {
-    await delay(PROVE);
-    return { total: db.privateTotal, onChain: true, ref: fakeRef("Exact total proof", "ORGSUM", [{ k: "Total (committed)", v: db.privateTotal }]) };
-  },
-  proveSolvency: async () => {
-    await delay(PROVE);
-    const liabilities = db.invoices.filter((i) => i.status === "open").reduce((s, i) => s + BigInt(i.total.amount), 0n) + BigInt(db.payrolls.find((p) => p.status === "needs_approval")?.total.amount ?? "0");
-    return { solvent: true, onChain: true, liabilities: liabilities.toString(), ref: fakeRef("Solvency proof", "ORGSOLV") };
+  treasuryDeposits: async (_orgId: string, query: { limit?: number; before?: string } = {}): Promise<TreasuryDepositsResponse> => {
+    await delay(READ);
+    const start = query.before ? db.treasuryDeposits.findIndex((d) => d.id === query.before) + 1 : 0;
+    const from = Math.max(0, start);
+    const limit = query.limit ?? 20;
+    const deposits = db.treasuryDeposits.slice(from, from + limit);
+    const next = db.treasuryDeposits[from + limit]?.id;
+    return { deposits: clone(deposits), nextCursor: next };
   },
   proveKyb: async () => (await delay(PROVE), { ok: true, onChain: true, jurisdiction: "US", tier: "verified", ref: fakeRef("KYB credential", "KYB") }),
   periodTotalAttestation: async (period: string) => {
