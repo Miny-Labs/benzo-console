@@ -17,7 +17,7 @@ import type {
   TreasuryView,
   ViewingGrant,
 } from "@benzo/types";
-import { api, AUTH_CHANGED_EVENT, sessionWithActiveOrg } from "./api";
+import { api, ApiError, AUTH_CHANGED_EVENT, AUTH_REQUIRED_EVENT, notifyAuthRequired, sessionWithActiveOrg } from "./api";
 import { DEMO_MODE } from "../demo/flag";
 
 interface ConsoleState {
@@ -89,6 +89,11 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
   // decide whether there is a live session. Demo still starts authenticated.
   const [authenticated, setAuthenticated] = useState(true);
   const booted = useRef(false);
+  // Mirror the live session in a ref so refresh()'s catch can tell "we already
+  // have a workspace to keep" (a transient failure should stay on the shell) from
+  // "the first load hasn't landed yet" (a transient failure should stay on the
+  // loading screen — never the sign-in screen).
+  const sessionRef = useRef<AuthSession | null>(null);
 
   const clearReadModels = useCallback(() => {
     setLiveStatus(null);
@@ -119,11 +124,26 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
       setAuthenticated(true);
     } catch (e) {
       if (!DEMO_MODE) {
-        setAuthenticated(false);
-        setSession(null);
-        clearReadModels();
-        setError(null);
-        setLoading(false);
+        // #61: only a confirmed 401 means the cookie session is actually gone.
+        // Route that through the standard notifyAuthRequired -> AUTH_REQUIRED_EVENT
+        // path (the listener below clears auth). EVERY other failure (timeout,
+        // network, a transient 5xx on /orgs) is transient and must NOT strand a
+        // valid session on the sign-in screen.
+        if (e instanceof ApiError && e.status === 401) {
+          notifyAuthRequired();
+          setLoading(false);
+          return false;
+        }
+        if (sessionRef.current) {
+          // Mid-session: keep the workspace and its last-loaded data on screen,
+          // just surface a reconnecting note; the boot retry / 30s poll recover.
+          setError("Couldn't refresh — reconnecting…");
+          setLoading(false);
+        } else {
+          // First load hasn't succeeded yet: stay on the "Loading workspace…"
+          // screen (RootGate shows sign-in only when !loading && !session).
+          setLoading(true);
+        }
         return false;
       }
       setError((e as Error)?.message ?? "Failed to load");
@@ -220,6 +240,23 @@ export function ConsoleProvider({ children }: { children: ReactNode }) {
     window.addEventListener(AUTH_CHANGED_EVENT, onAuthChanged);
     return () => window.removeEventListener(AUTH_CHANGED_EVENT, onAuthChanged);
   }, []);
+
+  // #61: a confirmed 401 (session expired) is signalled by AUTH_REQUIRED_EVENT via
+  // notifyAuthRequired(). This — and an explicit logout (AUTH_CHANGED) — are the
+  // ONLY things that clear auth in real mode; a transient read failure never fires
+  // it, so it can no longer strand a live session on the sign-in screen.
+  useEffect(() => {
+    const onAuthRequired = () => {
+      if (!DEMO_MODE) setAuthenticated(false);
+    };
+    window.addEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
+    return () => window.removeEventListener(AUTH_REQUIRED_EVENT, onAuthRequired);
+  }, []);
+
+  // Keep the session ref in sync so refresh()'s catch can read the live value.
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   return (
       <Ctx.Provider
