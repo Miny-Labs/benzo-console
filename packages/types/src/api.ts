@@ -126,20 +126,64 @@ export interface LiveStatusResponse {
   missing: string[];
 }
 
-export interface TreasuryAccountView {
-  account: Account;
-  /** decoded balance (minor units) or null if not in the caller's view */
-  balance: Money | null;
+export type TreasuryToken = "usdc" | "eurc";
+
+export interface TreasuryCustodyConsent {
+  consented: boolean;
+  consentedAt: Timestamp | null;
+  consentedBy: string | null;
+}
+
+export interface TreasuryBalanceView {
+  token: TreasuryToken;
+  tokenId: string;
+  symbol: string;
+  decimals: number;
+  /** encrypted token balance, minor units */
+  amount: string;
 }
 
 export interface TreasuryView {
-  /** aggregate of all decodable account balances */
-  totalHidden: Money;
-  accounts: TreasuryAccountView[];
-  /** whether a prove-balance proof can be produced for a threshold */
-  proveBalanceAvailable: boolean;
-  /** TRUE => real decoded on-chain balance. */
-  live: boolean;
+  address: EvmAddress;
+  custody: "managed";
+  registered: boolean;
+  consented: boolean;
+  custodyConsent: TreasuryCustodyConsent;
+  balances: TreasuryBalanceView[];
+}
+
+export interface DepositToTreasuryRequest {
+  /** minor units; must match ^[1-9][0-9]*$ */
+  amount: string;
+  token: TreasuryToken;
+  idempotencyKey: string;
+}
+
+export interface DepositToTreasuryResponse {
+  amount: string;
+  approvalTxHash?: string;
+  source: "direct";
+  status: "confirmed" | "submitted";
+  token: TreasuryToken;
+  tokenId: string;
+  txHash: string;
+}
+
+export interface TreasuryDeposit {
+  id: string;
+  kind: "direct" | "cctp";
+  amount: string;
+  token: TreasuryToken;
+  status: "pending" | "credited" | "failed";
+  txHash: string;
+  sourceChain: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface TreasuryDepositsResponse {
+  deposits: TreasuryDeposit[];
+  nextCursor?: string;
 }
 
 // ---- request DTOs ---------------------------------------------------------
@@ -255,9 +299,10 @@ export const ENDPOINTS = {
   onboardingStatus: { method: "GET", path: "/api/onboarding/status" },
   onboardingStatusStream: { method: "GET", path: "/api/onboarding/status/stream" },
   provisionTreasury: { method: "POST", path: "/api/orgs/:id/treasury" },
+  orgTreasury: { method: "GET", path: "/api/orgs/:id/treasury" },
+  depositToTreasury: { method: "POST", path: "/api/orgs/:id/treasury/deposit" },
+  treasuryDeposits: { method: "GET", path: "/api/orgs/:id/treasury/deposits" },
   dashboard: { method: "GET", path: "/api/dashboard" },
-  treasury: { method: "GET", path: "/api/treasury" },
-  proveBalance: { method: "POST", path: "/api/treasury/prove-balance" },
 
   members: { method: "GET", path: "/api/members" },
   inviteMember: { method: "POST", path: "/api/members" },

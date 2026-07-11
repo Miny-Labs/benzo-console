@@ -36,7 +36,7 @@ const APPROVAL_THRESHOLD_USD = 10_000;
 export function Pay() {
   const nav = useNavigate();
   const toast = useToast();
-  const { accounts, counterparties, dashboard, treasury, refresh } = useConsole();
+  const { accounts, counterparties, dashboard, refresh } = useConsole();
   const live = dashboard?.live ?? false;
   const [step, setStep] = useState<"form" | "confirm">("form");
   const [fromAccountId, setFrom] = useState("");
@@ -47,7 +47,7 @@ export function Pay() {
   const [result, setResult] = useState<{ status: string; onChain?: boolean; unpayable?: boolean } | null>(null);
 
   const fromName = accounts.find((a) => a.id === fromAccountId)?.name ?? "";
-  const fromBalance = treasury?.accounts.find((a) => a.account.id === fromAccountId)?.balance?.amount;
+  const fromBalance: string | undefined = undefined;
   const payee = counterparties.find((c) => c.id === toCounterpartyId);
   const hasHandle = !!payee?.paymentAddress?.shielded;
   const amountNum = Number(amount);

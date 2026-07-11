@@ -99,13 +99,9 @@ describe("console API idempotency", () => {
       () => api.siweVerify("m", "0xsig"),
       () => api.logout(),
       () => api.provisionTreasury("org_1"),
-      () => api.proveBalance("1"),
-      () => api.proveTotal(),
-      () => api.proveSolvency(),
       () => api.proveKyb(),
       () => api.periodTotalAttestation("2026-06"),
-      () => api.fundTreasury("1"),
-      () => api.treasurySendPublic("G".padEnd(56, "A"), "1"),
+      () => api.depositToTreasury("org_1", { amount: "1000000", token: "usdc", idempotencyKey: "idem_body_1" }),
       () => api.updateCounterparty("cp_1", { status: "allowlisted" }),
       () => api.importRoster("name,handle,rate\\nA,@a,1"),
       () => api.createPayment(payment),
@@ -173,6 +169,42 @@ describe("console API idempotency", () => {
     expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: "POST", body: JSON.stringify({ mockKyc: { name: "Acme Inc.", country: "US" } }), credentials: "include" });
     expect(callHeaders(fetchMock.mock.calls[2]).get("idempotency-key")).toBeNull();
     expect(fetchMock.mock.calls[3][1]).toMatchObject({ method: "POST", body: JSON.stringify({ consent: true }), credentials: "include" });
+  });
+
+  it("uses org-scoped treasury read, deposit, and deposits-history endpoints", async () => {
+    const treasury = {
+      address: "0xtreasury",
+      custody: "managed",
+      registered: true,
+      consented: true,
+      custodyConsent: { consented: true, consentedAt: "2026-07-10T00:00:00.000Z", consentedBy: "usr_1" },
+      balances: [{ token: "usdc", tokenId: "avax-usdc", symbol: "USDC", decimals: 6, amount: "12000000" }],
+    };
+    const deposit = { amount: "2500000", source: "direct", status: "submitted", token: "usdc", tokenId: "avax-usdc", txHash: "0xdep" };
+    const history = { deposits: [{ id: "dep_1", kind: "direct", amount: "2500000", token: "usdc", status: "pending", txHash: "0xdep", sourceChain: "avalanche-fuji", createdAt: "2026-07-10T00:00:00.000Z", updatedAt: "2026-07-10T00:00:00.000Z" }], nextCursor: "dep_1" };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(treasury))
+      .mockResolvedValueOnce(jsonResponse(deposit, 202))
+      .mockResolvedValueOnce(jsonResponse(history));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.orgTreasury("org_1")).resolves.toMatchObject({ address: "0xtreasury", balances: [{ symbol: "USDC" }] });
+    await expect(api.depositToTreasury("org_1", { amount: "2500000", token: "usdc", idempotencyKey: "idem_body_2" })).resolves.toMatchObject({ status: "submitted", txHash: "0xdep" });
+    await expect(api.treasuryDeposits("org_1", { limit: 10, before: "dep_0" })).resolves.toMatchObject({ deposits: [{ id: "dep_1" }] });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      apiHref("/orgs/org_1/treasury"),
+      apiHref("/orgs/org_1/treasury/deposit"),
+      apiHref("/orgs/org_1/treasury/deposits?limit=10&before=dep_0"),
+    ]);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ amount: "2500000", token: "usdc", idempotencyKey: "idem_body_2" }),
+      credentials: "include",
+    });
+    expect(callHeaders(fetchMock.mock.calls[0]).get("idempotency-key")).toBeNull();
+    expect(callHeaders(fetchMock.mock.calls[1]).get("idempotency-key")).toMatch(/^idem_/);
+    expect(callHeaders(fetchMock.mock.calls[2]).get("idempotency-key")).toBeNull();
   });
 
   it("subscribes to onboarding status with credentialed EventSource", () => {

@@ -19,6 +19,7 @@ import type {
   PaymentOrder,
   PayrollBatch,
   ProvisionTreasuryResponse,
+  TreasuryDeposit,
   TreasuryView,
   ViewingGrant,
 } from "@benzo/types";
@@ -50,6 +51,7 @@ export interface DemoDb {
   ledger: LedgerEntry[];
   onboardingStatus: OnboardingStatus;
   treasuryProvision: ProvisionTreasuryResponse;
+  treasuryDeposits: TreasuryDeposit[];
   /** Private (shielded) pool total, minor units — grows when "Make private" runs. */
   privateTotal: string;
   /** Public liquid USDC balance, minor units. */
@@ -369,6 +371,30 @@ export function createDemoDb(): DemoDb {
     consented: true,
     registrationTxHash: fakeHash("eerc"),
   };
+  const treasuryDeposits: TreasuryDeposit[] = [
+    {
+      id: "dep_direct_1",
+      kind: "direct",
+      amount: usd(120000),
+      token: "usdc",
+      status: "credited",
+      txHash: fakeHash("5h2e"),
+      sourceChain: "avalanche-fuji",
+      createdAt: ISO("2026-07-02T09:30:00Z"),
+      updatedAt: ISO("2026-07-02T09:31:00Z"),
+    },
+    {
+      id: "dep_direct_2",
+      kind: "direct",
+      amount: usd(500000),
+      token: "usdc",
+      status: "credited",
+      txHash: fakeHash("5h1e"),
+      sourceChain: "avalanche-fuji",
+      createdAt: ISO("2026-05-02T10:00:00Z"),
+      updatedAt: ISO("2026-05-02T10:02:00Z"),
+    },
+  ];
 
   return {
     session,
@@ -386,6 +412,7 @@ export function createDemoDb(): DemoDb {
     ledger,
     onboardingStatus,
     treasuryProvision,
+    treasuryDeposits,
     privateTotal: usd(842300),
     publicUnits: usd(48250),
     publicAddress,
@@ -396,18 +423,20 @@ export function createDemoDb(): DemoDb {
 
 /** Treasury view derived live from the (mutable) db so balances reflect shields. */
 export function treasuryView(db: DemoDb): TreasuryView {
-  const total = BigInt(db.privateTotal);
-  // split the private pool across the two accounts (Operating ~62%, Payroll ~38%).
-  const operating = (total * 62n) / 100n;
-  const payroll = total - operating;
   return {
-    totalHidden: { amount: db.privateTotal, assetCode: "USDC" },
-    accounts: [
-      { account: db.accounts[0], balance: { amount: operating.toString(), assetCode: "USDC" } },
-      { account: db.accounts[1], balance: { amount: payroll.toString(), assetCode: "USDC" } },
+    address: db.treasuryProvision.address,
+    custody: "managed",
+    registered: db.treasuryProvision.registered,
+    consented: db.treasuryProvision.consented,
+    custodyConsent: {
+      consented: db.treasuryProvision.consented,
+      consentedAt: db.treasuryProvision.consented ? db.session.activeOrg?.createdAt ?? null : null,
+      consentedBy: db.treasuryProvision.consented ? db.session.user.id : null,
+    },
+    balances: [
+      { token: "usdc", tokenId: "avalanche-fuji:usdc", symbol: "USDC", decimals: 6, amount: db.privateTotal },
+      { token: "eurc", tokenId: "avalanche-fuji:eurc", symbol: "EURC", decimals: 6, amount: usd(48250) },
     ],
-    proveBalanceAvailable: true,
-    live: true,
   };
 }
 

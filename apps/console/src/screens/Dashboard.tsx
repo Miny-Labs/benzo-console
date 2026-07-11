@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, ChevronDown, EyeOff, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useReducedMotion } from "framer-motion";
-import type { ActivityItem } from "@benzo/types";
+import type { ActivityItem, TreasuryView } from "@benzo/types";
 import { useConsole } from "../lib/store";
 import { USDC_SCALE, fmtDateTime, formatMoney } from "../lib/format";
 import { PRIVACY } from "../lib/copy";
@@ -57,6 +57,10 @@ function timeAgo(ts: string | number | Date): string {
   return `${mo} month${mo === 1 ? "" : "s"} ago`;
 }
 
+function primaryTreasuryMinor(treasury: TreasuryView | null | undefined, fallback = "0"): string {
+  return treasury?.balances.find((balance) => balance.token === "usdc")?.amount ?? fallback;
+}
+
 /**
  * Setup banner — the bridge from onboarding to first value, collapsed into ONE calm
  * line: "Finish setup — N steps remaining" + the next action's prompt + its CTA.
@@ -72,7 +76,7 @@ function SetupBanner() {
   const [showDone, setShowDone] = useState(false);
 
   // Seed each item from live state — honest, not a stored flag.
-  const funded = Number(treasury?.totalHidden.amount ?? "0") > 0;
+  const funded = Number(primaryTreasuryMinor(treasury)) > 0;
   // Maker-checker needs a proposer ≠ approver: more than one member, at least one of
   // whom can approve.
   const canApprove = (r: string) => r === "approver" || r === "admin" || r === "owner";
@@ -218,7 +222,7 @@ export function Dashboard() {
   const unverified = new Set(payments.filter((p) => p.settlement?.onChain === false).map((p) => p.id));
   const activity = dashboard?.recentActivity ?? [];
 
-  const targetDollars = Number(treasury?.totalHidden.amount ?? dashboard?.totalPosition.amount ?? "0") / USDC_SCALE;
+  const targetDollars = Number(primaryTreasuryMinor(treasury, dashboard?.totalPosition.amount ?? "0")) / USDC_SCALE;
   const animatedTotal = useCountUp(targetDollars);
 
   /** •••••• (hidden from viewer) · — (no amount) · the figure (visible). */
